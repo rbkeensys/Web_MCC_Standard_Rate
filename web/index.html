@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>MCC Web Control</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="left">
+      <button id="connectBtn" class="btn">Connect</button>
+      <label>Rate Hz <input id="rate" type="number" min="1" step="1" value="100"></label>
+      <button id="setRate" class="btn">Set</button>
+      <span id="session" class="badge"></span>
+      <span id="versions" class="muted"></span>
+    </div>
+    <div class="right">
+      <button id="editConfig" class="btn">Config</button>
+      <button id="editPID" class="btn">PID</button>
+      <button id="editScript" class="btn">Script</button>
+      <button id="saveLayout" class="btn">Save Layout</button>
+      <button id="loadLayout" class="btn">Load Layout</button>
+      <button id="openLogBtn" type="button">Open Log</button>
+      <button id="stopReplayBtn" type="button">Stop Replay</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="palette">
+      <h3>Widgets</h3>
+      <button class="btn" data-add="chart">Chart</button>
+      <button class="btn" data-add="gauge">Gauge</button>
+      <button class="btn" data-add="bars">Bars</button>
+      <button class="btn" data-add="aoslider">AO Slider</button>
+      <button class="btn" data-add="dobutton">DO Button</button>
+      <button class="btn" data-add="pidpanel">PID Panel</button>
+      <h3>Pages</h3>
+      <div id="pages"></div>
+      <div class="page-controls">
+        <button id="addPage" class="btn">+ Add Page</button>
+        <button id="delPage" class="btn danger">− Remove Page</button>
+      </div>
+    </aside>
+    <section class="canvas" id="canvas"></section>
+  </main>
+
+  <div id="modal" class="modal hidden"></div>
+  <script src="/app.js?v=0.7.2" defer></script>
+</body>
+</html>
