@@ -49,6 +49,45 @@ table.form input, table.form select { width:100%; font-size:12px; padding:4px 6p
 .compact .form input, .compact .form select { font-size:12px; padding:3px 5px; }
 
 /* Chart context menu */
+
+.ctx.persistent {
+  position: fixed;
+  z-index: 10000;
+}
+
+.ctx-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid #2b3154;
+  margin: -6px -6px 6px -6px;
+  background: #1a1e35;
+  border-radius: 8px 8px 0 0;
+}
+
+.ctx-header h4 {
+  margin: 0;
+  flex: 1;
+}
+
+.ctx-close {
+  background: transparent;
+  border: none;
+  color: #cfd6f0;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  margin-left: 8px;
+}
+
+.ctx-close:hover {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.1);
+  border-radius: 4px;
+}
+
 .ctx { position:absolute; z-index:9999; background:#121526; border:1px solid #2b3154; border-radius:8px; padding:6px; min-width:220px; box-shadow:0 10px 30px rgba(0,0,0,0.4); }
 .ctx h4 { margin:6px 8px; font-size:13px; color:#cfd6f0; }
 .ctx .row { padding:4px 8px; }

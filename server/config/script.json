@@ -1,7 +1,7 @@
 {
   "events": [
     {
-      "time": 0.0,
+      "time": 0,
       "relays": [
         true,
         false,
@@ -11,7 +11,8 @@
         false,
         false,
         false
-      ]
+      ],
+      "state": true
     },
     {
       "time": 0.5,
@@ -27,7 +28,7 @@
       ]
     },
     {
-      "time": 1.0,
+      "time": 1,
       "relays": [
         false,
         false,
@@ -37,7 +38,8 @@
         false,
         false,
         false
-      ]
+      ],
+      "state": true
     },
     {
       "time": 1.5,
@@ -53,7 +55,7 @@
       ]
     },
     {
-      "time": 2.0,
+      "time": 2,
       "relays": [
         false,
         false,
@@ -63,7 +65,9 @@
         false,
         false,
         false
-      ]
+      ],
+      "channel": 1,
+      "state": true
     },
     {
       "time": 2.1,
@@ -76,7 +80,8 @@
         false,
         false,
         true
-      ]
+      ],
+      "state": true
     },
     {
       "time": 2.2,
@@ -89,7 +94,16 @@
         false,
         false,
         false
-      ]
+      ],
+      "channel": 1
+    },
+    {
+      "time": 2.5,
+      "duration": 0,
+      "type": "DO",
+      "channel": 0,
+      "state": false,
+      "normallyOpen": true
     }
   ]
 }

@@ -811,9 +811,11 @@ function addWidget(type){
   state.pages[activePageIndex].widgets.push(w);
   renderPage();
 }
+
+// Update defaultsFor to give charts reasonable initial spans:
 function defaultsFor(type){
   switch(type){
-    case 'chart':    return { title:'Chart', series:[], span:10, paused:false, scale:'auto', min:0, max:10, filterHz:0, cursorMode:'follow' };
+    case 'chart':    return { title:'Chart', series:[], span:60, paused:false, scale:'auto', min:0, max:10, filterHz:0, cursorMode:'follow' };
     case 'gauge':    return { title:'Gauge', needles:[], scale:'manual', min:0, max:10 };
     case 'bars':     return { title:'Bars', series:[], scale:'manual', min:0, max:10 };
     case 'dobutton': return { title:'DO', doIndex:0, activeHigh:true, mode:'toggle', buzzHz:10, actuationTime:0, _timer:null };
@@ -868,13 +870,15 @@ function removeWidget(id){
   const idx=page.widgets.findIndex(x=>x.id===id);
   if(idx>=0){ page.widgets.splice(idx,1); renderPage(); }
 }
+
 function widgetOptions(w){
   const opts=[];
   if (w.type==='chart'||w.type==='gauge'||w.type==='bars'){
-    const sel=el('select',{value:w.opts.scale},[
+    const sel=el('select',{},[
       el('option',{value:'auto'}, 'Auto'),
       el('option',{value:'manual'}, 'Manual')
     ]);
+    sel.value = w.opts.scale || 'auto';  // Set value AFTER options are added
     sel.onchange=e=>{ w.opts.scale=e.target.value; };
     const min=el('input',{type:'number',value:w.opts.min, step:'any', style:'width:90px'});
     const max=el('input',{type:'number',value:w.opts.max, step:'any', style:'width:90px'});
@@ -884,16 +888,57 @@ function widgetOptions(w){
   }
   if (w.type==='chart'){
     const span=el('input',{type:'number', value:w.opts.span, min:1, step:1, style:'width:70px'});
-    span.oninput=()=>{ w.opts.span=parseFloat(span.value)||10; };
+    span.oninput=()=>{
+      const newSpan = parseFloat(span.value)||10;
+      w.opts.span = newSpan;
+
+      // If not zoom-paused, update view span too
+      if (!w.view.paused) {
+        w.view.span = newSpan;
+      }
+
+      // Clear any data beyond the new buffer depth immediately
+      const buf = chartBuffers.get(w.id);
+      if (buf && buf.length) {
+        const t = performance.now()/1000;
+        const bufferDepth = newSpan * 1.2;
+        while (buf.length && (t - buf[0].t) > bufferDepth) {
+          buf.shift();
+        }
+      }
+    };
+
     const filt=el('input',{type:'number', value:w.opts.filterHz||0, min:0, step:'any', style:'width:80px'});
     filt.oninput =()=>{ w.opts.filterHz=parseFloat(filt.value)||0; };
-    const pause=el('button',{className:'btn', onclick:()=>{ w.opts.paused=!w.opts.paused; pause.textContent=w.opts.paused?'Resume':'Pause'; }},
-      w.opts.paused?'Resume':'Pause'
-    );
-    opts.push(el('span',{},'Span[s]:'), span, el('span',{},'Filter[Hz]:'), filt, pause);
+
+    const yGrid=el('input',{type:'number', value:w.opts.yGridLines||5, min:2, max:20, step:1, style:'width:60px'});
+    yGrid.oninput=()=>{ w.opts.yGridLines=parseInt(yGrid.value)||5; };
+
+    const pause=el('button',{className:'btn', onclick:()=>{
+      w.opts.paused=!w.opts.paused;
+      if (w.opts.paused) {
+        // Freeze current time when pausing
+        const buf = chartBuffers.get(w.id) || [];
+        if (buf.length) {
+          w.opts.tFreeze = buf[buf.length - 1].t;
+        }
+      } else {
+        // Clear freeze time when resuming
+        w.opts.tFreeze = null;
+      }
+      pause.textContent=w.opts.paused?'Resume':'Pause';
+    }}, w.opts.paused?'Resume':'Pause');
+
+    opts.push(el('span',{},'Span[s]:'), span, el('span',{},'Filter[Hz]:'), filt, el('span',{},'Y Grid:'), yGrid, pause);
+  }
+  if (w.type==='bars'){
+    const yGrid=el('input',{type:'number', value:w.opts.yGridLines||5, min:2, max:20, step:1, style:'width:60px'});
+    yGrid.oninput=()=>{ w.opts.yGridLines=parseInt(yGrid.value)||5; };
+    opts.push(el('span',{},'Y Grid:'), yGrid);
   }
   return opts;
 }
+
 
 /* ------------------------------- chart ---------------------------------- */
 const chartBuffers=new Map();
@@ -901,15 +946,25 @@ const chartFilters=new Map();
 const chartCursor=new Map(); // w.id -> {x: number|null, mode:'follow'|'current', ctxEl:HTMLElement|null}
 
 /* ==================== ENHANCED CHART WITH GRID ==================== */
-// Replace your mountChart function with this enhanced version
+/* ==================== FIXED CHART SPAN - LIVE UPDATE ==================== */
+// The issue is that w.view.span gets used in draw(), but when NOT paused,
+// it should follow w.opts.span. Let me fix the draw function logic:
 
 function mountChart(w, body){
   const legend=el('div',{className:'legend'}); body.append(legend);
   const canvas=el('canvas'); body.append(canvas);
   const ctx=canvas.getContext('2d');
 
+  // Initialize view
   w.view = w.view || { span: (window.GLOBAL_BUFFER_SPAN || 10), paused: false, tFreeze: 0 };
-  w.opts.yGridLines = w.opts.yGridLines || 5; // Default 5 horizontal lines
+  w.opts.yGridLines = w.opts.yGridLines || 5;
+
+  // Sync initial span
+  if (!w.opts.span) {
+    w.opts.span = w.view.span;
+  } else {
+    w.view.span = w.opts.span;
+  }
 
   canvas.addEventListener('wheel', (ev)=>{
     ev.preventDefault();
@@ -919,13 +974,17 @@ function mountChart(w, body){
         for (const w2 of p.widgets){
           if (w2.type==='chart'){
             w2.view = w2.view || { span: window.GLOBAL_BUFFER_SPAN, paused:false, tFreeze:0 };
-            if (!w2.view.paused) w2.view.span = window.GLOBAL_BUFFER_SPAN;
+            if (!w2.view.paused) {
+              w2.view.span = window.GLOBAL_BUFFER_SPAN;
+              w2.opts.span = window.GLOBAL_BUFFER_SPAN;
+            }
           }
         }
       }
     } else {
       const base = (w.view.span || (window.GLOBAL_BUFFER_SPAN || 10));
       w.view.span = Math.max(0.1, Math.min(3600, base * ((ev.deltaY>0)?1.15:1/1.15)));
+      w.opts.span = w.view.span; // Keep in sync
       const buf = chartBuffers.get(w.id) || [];
       w.view.paused = true;
       w.view.tFreeze = buf.length ? buf[buf.length-1].t : performance.now()/1000;
@@ -933,7 +992,7 @@ function mountChart(w, body){
   }, {passive:false});
 
   canvas.addEventListener('dblclick', ()=>{
-    w.view.span = (window.GLOBAL_BUFFER_SPAN || 10);
+    w.view.span = w.opts.span || (window.GLOBAL_BUFFER_SPAN || 10);
     w.view.paused = false;
   });
 
@@ -958,8 +1017,6 @@ function mountChart(w, body){
   });
 
   function draw(){
-    if (w.opts.paused){ requestAnimationFrame(draw); return; }
-
     const buf=chartBuffers.get(w.id)||[];
     const W=canvas.clientWidth, H=canvas.clientHeight;
     canvas.width=W; canvas.height=H;
@@ -970,11 +1027,21 @@ function mountChart(w, body){
     ctx.strokeRect(plotL,plotT,plotR-plotL,plotB-plotT);
 
     if (buf.length){
-      const fullSpan = (window.GLOBAL_BUFFER_SPAN || 10);
-      const viewSpan = Math.max(0.1, w.view.span || fullSpan);
-      const t1 = w.view.paused
-        ? (w.view.tFreeze || buf[buf.length-1].t)
-        : buf[buf.length-1].t;
+      // KEY FIX: When NOT paused by zoom, use opts.span (the spinner value)
+      // When paused by zoom, use view.span (the zoomed value)
+      const viewSpan = w.view.paused
+        ? w.view.span
+        : (w.opts.span || window.GLOBAL_BUFFER_SPAN || 10);
+
+      // Handle both zoom pause (w.view.paused) and button pause (w.opts.paused)
+      let t1;
+      if (w.view.paused) {
+        t1 = w.view.tFreeze || buf[buf.length-1].t;
+      } else if (w.opts.paused && w.opts.tFreeze !== null && w.opts.tFreeze !== undefined) {
+        t1 = w.opts.tFreeze;
+      } else {
+        t1 = buf[buf.length-1].t;
+      }
       const t0 = t1 - viewSpan;
       const viewBuf = buf.filter(b => b.t >= t0);
       const dt = Math.max(1e-6, t1 - t0);
@@ -1017,16 +1084,13 @@ function mountChart(w, body){
         const y = plotB - frac * (plotB - plotT);
         const val = ymin + frac * (ymax - ymin);
 
-        // Draw horizontal line
         ctx.beginPath();
         ctx.moveTo(plotL, y);
         ctx.lineTo(plotR, y);
         ctx.stroke();
 
-        // Draw value label on the left axis
         ctx.fillText(val.toFixed(2), plotL - 5, y);
 
-        // Draw value label in the middle of the plot
         ctx.textAlign='center';
         ctx.fillStyle='rgba(122, 129, 153, 0.6)';
         ctx.fillText(val.toFixed(2), (plotL + plotR) / 2, y - 2);
@@ -1068,14 +1132,16 @@ function mountChart(w, body){
   draw();
 }
 
-// Update widgetOptions to add Y Grid control
+// And update the widgetOptions to NOT update view.span directly:
+
 function widgetOptions(w){
   const opts=[];
   if (w.type==='chart'||w.type==='gauge'||w.type==='bars'){
-    const sel=el('select',{value:w.opts.scale},[
+    const sel=el('select',{},[
       el('option',{value:'auto'}, 'Auto'),
       el('option',{value:'manual'}, 'Manual')
     ]);
+    sel.value = w.opts.scale || 'auto';  // Set value AFTER options are added
     sel.onchange=e=>{ w.opts.scale=e.target.value; };
     const min=el('input',{type:'number',value:w.opts.min, step:'any', style:'width:90px'});
     const max=el('input',{type:'number',value:w.opts.max, step:'any', style:'width:90px'});
@@ -1085,14 +1151,33 @@ function widgetOptions(w){
   }
   if (w.type==='chart'){
     const span=el('input',{type:'number', value:w.opts.span, min:1, step:1, style:'width:70px'});
-    span.oninput=()=>{ w.opts.span=parseFloat(span.value)||10; };
+    span.oninput=()=>{
+      w.opts.span=parseFloat(span.value)||10;
+      // If NOT zoom-paused, this will take effect immediately via draw()
+      // If zoom-paused, it will take effect when user double-clicks to reset
+    };
+
     const filt=el('input',{type:'number', value:w.opts.filterHz||0, min:0, step:'any', style:'width:80px'});
     filt.oninput =()=>{ w.opts.filterHz=parseFloat(filt.value)||0; };
+
     const yGrid=el('input',{type:'number', value:w.opts.yGridLines||5, min:2, max:20, step:1, style:'width:60px'});
     yGrid.oninput=()=>{ w.opts.yGridLines=parseInt(yGrid.value)||5; };
-    const pause=el('button',{className:'btn', onclick:()=>{ w.opts.paused=!w.opts.paused; pause.textContent=w.opts.paused?'Resume':'Pause'; }},
-      w.opts.paused?'Resume':'Pause'
-    );
+
+    const pause=el('button',{className:'btn', onclick:()=>{
+      w.opts.paused=!w.opts.paused;
+      if (w.opts.paused) {
+        // Freeze current time when pausing
+        const buf = chartBuffers.get(w.id) || [];
+        if (buf.length) {
+          w.opts.tFreeze = buf[buf.length - 1].t;
+        }
+      } else {
+        // Clear freeze time when resuming
+        w.opts.tFreeze = null;
+      }
+      pause.textContent=w.opts.paused?'Resume':'Pause';
+    }}, w.opts.paused?'Resume':'Pause');
+
     opts.push(el('span',{},'Span[s]:'), span, el('span',{},'Filter[Hz]:'), filt, el('span',{},'Y Grid:'), yGrid, pause);
   }
   if (w.type==='bars'){
@@ -1104,32 +1189,96 @@ function widgetOptions(w){
 }
 
 function buildChartContextMenu(w, canvas, legend){
-  const menu=el('div',{className:'ctx'});
-  const title=el('h4',{}, (w.opts.title||'Chart')+' — Data');
+  const menu=el('div',{className:'ctx persistent'});
+
+  // Add close button at top right
+  const closeBtn = el('button', {
+    className: 'ctx-close',
+    onclick: () => {
+      if (menu.parentNode) {
+        menu.parentNode.removeChild(menu);
+      }
+      const cur = chartCursor.get(w.id);
+      if (cur) {
+        cur.ctxEl = null;
+        chartCursor.set(w.id, cur);
+      }
+    }
+  }, '×');
+
+  const header = el('div', {className: 'ctx-header'}, [
+    el('h4', {}, (w.opts.title||'Chart')+' – Data'),
+    closeBtn
+  ]);
+
   const follow=el('label',{},[el('input',{type:'radio',name:'mode',value:'follow'}),'Follow Cursor']);
   const current=el('label',{},[el('input',{type:'radio',name:'mode',value:'current'}),'Current']);
   const cur=chartCursor.get(w.id)||{mode:'follow'};
+
   setTimeout(()=>{
     const radios=menu.querySelectorAll('input[type=radio][name=mode]');
     radios.forEach(r=>{ if (r.value=== (cur.mode||'follow')) r.checked=true; });
   });
-  menu.append(title, el('div',{className:'row'},follow), el('div',{className:'row'},current));
+
+  menu.append(header, el('div',{className:'row'},follow), el('div',{className:'row'},current));
+
   const table=el('table',{},[
     el('thead',{}, el('tr',{}, [el('th',{},'Series'), el('th',{},'Value')])),
     el('tbody',{})
   ]);
   menu.append(table);
+
   menu.addEventListener('change',(e)=>{
     if (e.target && e.target.name==='mode'){
       const cur=chartCursor.get(w.id)||{x:null, mode:'follow', ctxEl:menu};
-      cur.mode=e.target.value; chartCursor.set(w.id,cur);
+      cur.mode=e.target.value;
+      chartCursor.set(w.id,cur);
     }
   });
-  const close=()=>{ if(menu.parentNode) menu.parentNode.removeChild(menu); };
-  const away=(ev)=>{ if (!menu.contains(ev.target)) { document.removeEventListener('mousedown', away); close(); } };
-  setTimeout(()=>document.addEventListener('mousedown', away));
+
+  // Make it draggable by the header
+  makeDraggable(menu, header);
+
   return menu;
 }
+
+// Add a simple draggable function for the popup:
+function makeDraggable(element, handle){
+  let isDragging = false;
+  let startX, startY, initialLeft, initialTop;
+
+  handle.style.cursor = 'move';
+
+  handle.addEventListener('mousedown', (e)=>{
+    // Don't drag if clicking on close button or inputs
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+
+    const rect = element.getBoundingClientRect();
+    initialLeft = rect.left;
+    initialTop = rect.top;
+
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e)=>{
+    if (!isDragging) return;
+
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    element.style.left = (initialLeft + dx) + 'px';
+    element.style.top = (initialTop + dy) + 'px';
+  });
+
+  document.addEventListener('mouseup', ()=>{
+    isDragging = false;
+  });
+}
+
 function getPopupMode(menu){
   const v=menu.querySelector('input[type=radio][name=mode]:checked'); return v ? v.value : 'follow';
 }
@@ -1187,12 +1336,20 @@ function updateChartBuffers(){
         chartFilters.set(w.id, cf);
       }
       buf.push({t, v: filtered});
-      const span = Math.max(1, window.GLOBAL_BUFFER_SPAN || 10);
-      while (buf.length && (t - buf[0].t) > span) buf.shift();
+
+      // KEY FIX: Use the chart's own span setting (with some buffer margin)
+      const chartSpan = Math.max(1, w.opts.span || 10);
+      const bufferDepth = chartSpan * 1.2; // Keep 20% extra for smooth scrolling
+
+      // Remove old data beyond the buffer depth
+      while (buf.length && (t - buf[0].t) > bufferDepth) {
+        buf.shift();
+      }
       chartBuffers.set(w.id,buf);
     }
   }
 }
+
 function labelFor(sel){
   if (!configCache) return `${sel.kind.toUpperCase()}${sel.index}`;
   try{

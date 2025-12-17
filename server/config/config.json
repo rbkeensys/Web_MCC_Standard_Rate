@@ -154,29 +154,57 @@
     {
       "include": true,
       "ch": 0,
-      "name": "Top Temp",
-      "type": "T",
+      "name": "TC0",
+      "type": "K",
       "offset": 0.0
     },
     {
-      "include": false,
+      "include": true,
       "ch": 1,
-      "name": "Mid High",
-      "type": "T",
+      "name": "TC1",
+      "type": "K",
       "offset": 0.0
     },
     {
-      "include": false,
+      "include": true,
       "ch": 2,
-      "name": "Mid Low",
-      "type": "T",
+      "name": "TC2",
+      "type": "K",
+      "offset": 0.0
+    },
+    {
+      "include": true,
+      "ch": 3,
+      "name": "TC3",
+      "type": "K",
+      "offset": 0.0
+    },
+    {
+      "include": true,
+      "ch": 4,
+      "name": "TC4",
+      "type": "K",
       "offset": 0.0
     },
     {
       "include": false,
-      "ch": 3,
-      "name": "Bottom",
-      "type": "T",
+      "ch": 5,
+      "name": "TC5",
+      "type": "K",
+      "offset": 0.0
+    },
+    {
+      "include": false,
+      "ch": 6,
+      "name": "TC6",
+      "type": "K",
+      "offset": 0.0
+    },
+    {
+      "include": false,
+      "ch": 7,
+      "name": "TC7",
+      "type": "K",
       "offset": 0.0
     }
   ]

@@ -4,10 +4,13 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6ee747c5-542f-43af-b33e-a97c54c29c34" name="Changes" comment="Working standard rate, now has all editors working config, PID, script.  Scripts run too.">
+    <list default="true" id="6ee747c5-542f-43af-b33e-a97c54c29c34" name="Changes" comment="Added auto TC detect and skip missing/open at runtime.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/mcc_bridge.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/mcc_bridge.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/config/PID.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/PID.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/config/config.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/config.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/config/script.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/script.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/web/app.js" beforeDir="false" afterPath="$PROJECT_DIR$/web/app.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/web/styles.css" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -79,12 +82,21 @@
       <option name="project" value="LOCAL" />
       <updated>1764803400815</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="Added auto TC detect and skip missing/open at runtime.">
+      <option name="closed" value="true" />
+      <created>1764871379000</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1764871379000</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Working standard rate, now has all editors working config, PID, script.  Scripts run too." />
-    <option name="LAST_COMMIT_MESSAGE" value="Working standard rate, now has all editors working config, PID, script.  Scripts run too." />
+    <MESSAGE value="Added auto TC detect and skip missing/open at runtime." />
+    <option name="LAST_COMMIT_MESSAGE" value="Added auto TC detect and skip missing/open at runtime." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
