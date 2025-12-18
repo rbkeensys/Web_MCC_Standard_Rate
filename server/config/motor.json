@@ -1,0 +1,72 @@
+{
+  "motors": [
+    {
+      "name": "Motor0",
+      "port": "COM5",
+      "baudrate": 9600,
+      "address": 1,
+      "min_rpm": 0.0,
+      "max_rpm": 2500.0,
+      "input_source": "ai",
+      "input_channel": 0,
+      "input_min": -260.0,
+      "input_max": 250.0,
+      "scale_factor": -1.0,
+      "offset": 0.0,
+      "cw_positive": true,
+      "enabled": true,
+      "include": true
+    },
+    {
+      "name": "Motor1",
+      "port": "COM1",
+      "baudrate": 9600,
+      "address": 1,
+      "min_rpm": 0.0,
+      "max_rpm": 2500.0,
+      "input_source": "pid",
+      "input_channel": 2,
+      "input_min": -1000.0,
+      "input_max": 1000.0,
+      "scale_factor": 1.0,
+      "offset": 0.0,
+      "cw_positive": true,
+      "enabled": true,
+      "include": true
+    },
+    {
+      "name": "Motor2",
+      "port": "COM1",
+      "baudrate": 9600,
+      "address": 1,
+      "min_rpm": 0.0,
+      "max_rpm": 2500.0,
+      "input_source": "ai",
+      "input_channel": 0,
+      "input_min": 0.0,
+      "input_max": 10.0,
+      "scale_factor": 250.0,
+      "offset": 0.0,
+      "cw_positive": true,
+      "enabled": false,
+      "include": false
+    },
+    {
+      "name": "Motor3",
+      "port": "COM1",
+      "baudrate": 9600,
+      "address": 1,
+      "min_rpm": 0.0,
+      "max_rpm": 2500.0,
+      "input_source": "ai",
+      "input_channel": 0,
+      "input_min": 0.0,
+      "input_max": 10.0,
+      "scale_factor": 250.0,
+      "offset": 0.0,
+      "cw_positive": true,
+      "enabled": false,
+      "include": false
+    }
+  ]
+}
