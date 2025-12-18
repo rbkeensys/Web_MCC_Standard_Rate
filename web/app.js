@@ -121,6 +121,7 @@ function updateGaugesAndBarsFromReplayIndex(){
   if (msg.do) state.do = msg.do;
   if (msg.tc) state.tc = msg.tc;
   if (msg.pid) state.pid = msg.pid;
+  if (msg.motors) state.motors = msg.motors;
 
   updateDOButtons();
 }
@@ -674,6 +675,7 @@ function feedTick(msg){
   if (msg.do)  state.do  = msg.do;
   if (msg.tc)  state.tc  = msg.tc;
   if (msg.pid) state.pid = msg.pid;
+  if (msg.motors) state.motors = msg.motors;
   onTick();
 }
 
@@ -699,6 +701,7 @@ function wireUI(){
   $('#setRate')?.addEventListener('click', setRate);
   $('#editConfig')?.addEventListener('click', ()=>openConfigForm());
   $('#editPID')?.addEventListener('click', ()=>openPidForm());
+  $('#editMotor')?.addEventListener('click', ()=>openMotorEditor());
   $('#editScript')?.addEventListener('click', ()=>openScriptEditor());
   $('#saveLayout')?.addEventListener('click', saveLayoutToFile);
   $('#loadLayout')?.addEventListener('click', loadLayoutFromFile);
@@ -832,6 +835,12 @@ function addWidget(type){
     return;
   }
   
+  // Special handling for Motor - fetch motor config for name
+  if (type === 'motor') {
+    addMotorWidget();
+    return;
+  }
+  
   // Custom default sizes for different widget types
   let defaultW = 460, defaultH = 280;
   if (type === 'gauge') {
@@ -915,6 +924,66 @@ async function addPIDPanel() {
   }
 }
 
+async function addMotorWidget() {
+  try {
+    // Fetch motor configuration
+    const motorData = await (await fetch('/api/motors')).json();
+    const motors = motorData.motors || [];
+    
+    if (motors.length === 0) {
+      alert('No motors configured. Please configure motors first.');
+      return;
+    }
+    
+    // Ask which motor to display
+    const motorOptions = motors.map((m, i) => {
+      const included = m.include ? '✓' : '✗';
+      return `${i}: ${m.name} (${included})`;
+    }).join('\n');
+    
+    const selection = prompt(`Select motor index:\n\n${motorOptions}\n\nEnter index (0-${motors.length-1}):`);
+    if (selection === null) return;
+    
+    const motorIndex = parseInt(selection);
+    if (isNaN(motorIndex) || motorIndex < 0 || motorIndex >= motors.length) {
+      alert('Invalid motor index');
+      return;
+    }
+    
+    // Create widget with motor name as title
+    const motorName = motors[motorIndex].name || `Motor ${motorIndex}`;
+    const w = {
+      id: crypto.randomUUID(),
+      type: 'motor',
+      x: 40,
+      y: 40,
+      w: 320,
+      h: 380,
+      opts: {
+        title: motorName,
+        motorIndex: motorIndex,
+        showControls: true
+      }
+    };
+    state.pages[activePageIndex].widgets.push(w);
+    renderPage();
+  } catch(e) {
+    console.error('Failed to add motor widget:', e);
+    // Fall back to default
+    const w = {
+      id: crypto.randomUUID(),
+      type: 'motor',
+      x: 40,
+      y: 40,
+      w: 320,
+      h: 380,
+      opts: defaultsFor('motor')
+    };
+    state.pages[activePageIndex].widgets.push(w);
+    renderPage();
+  }
+}
+
 // Update defaultsFor to give charts reasonable initial spans:
 function defaultsFor(type){
   switch(type){
@@ -924,6 +993,7 @@ function defaultsFor(type){
     case 'dobutton': return { title:'DO', doIndex:0, activeHigh:true, mode:'toggle', buzzHz:10, actuationTime:0, _timer:null };
     case 'pidpanel': return { title:'PID', loopIndex:0, showControls:true };
     case 'aoslider': return { title:'AO', aoIndex:0, min:0, max:10, step:0.0025, live:true };
+    case 'motor':    return { title:'Motor', motorIndex:0, showControls:true };
   }
   return {};
 }
@@ -966,6 +1036,7 @@ function renderWidget(w){
     case 'dobutton': mountDOButton(w,body); break;
     case 'pidpanel': mountPIDPanel(w,body); break;
     case 'aoslider': mountAOSlider(w,body); break;
+    case 'motor':    mountMotorController(w,body); break;
   }
   return box;
 }
@@ -1805,7 +1876,7 @@ function mountPIDPanel(w, body){
 
     fetch('/api/pid').then(r=>r.json()).then(pid=>{
       const idx=w.opts.loopIndex|0; Object.assign(L, pid.loops?.[idx]||{});
-      const selKind=selectEnum(['analog','digital','tc','calc'], L.kind||'analog', v=>L.kind=v);
+      const selKind=selectEnum(['analog','digital','var','tc','calc'], L.kind||'analog', v=>L.kind=v);
       const selSrc =selectEnum(['ai','tc','calc'], L.src ||'ai',    v=>L.src=v);
       row('enabled', chk(L,'enabled'));
       row('name', txt(L,'name'));
@@ -1867,6 +1938,153 @@ function mountAOSlider(w, body){
   rng.oninput=()=>{ cur.value=rng.value; if (w.opts.live) send(rng.value); };
   cur.onchange=()=>{ rng.value=cur.value; send(cur.value); };
   body.append(el('div',{className:'row'},[rng,cur]));
+}
+
+/* -------------------------------- Motor Controller ------------------------------------ */
+function mountMotorController(w, body){
+  const status=el('div',{className:'small', id:'motor_'+w.id}, 'Input: —, RPM Cmd: —, Status: —');
+  body.append(status);
+
+  // Track current motor config for enable state
+  let currentConfig = null;
+  
+  const refreshConfig = async () => {
+    try {
+      const data = await (await fetch('/api/motors')).json();
+      const motors = data.motors || [];
+      currentConfig = motors[w.opts.motorIndex];
+    } catch(e) {
+      console.warn('Failed to refresh motor config:', e);
+    }
+  };
+  
+  refreshConfig(); // Initial load
+
+  if (w.opts.showControls){
+    const ctr=el('div',{className:'compact'});
+    
+    // Fetch current motor config
+    let motorConfig = null;
+    fetch('/api/motors').then(r=>r.json()).then(data=>{
+      const motors = data.motors || [];
+      motorConfig = motors[w.opts.motorIndex];
+      if (!motorConfig) return;
+      
+      // Build editable config table
+      const tbl=el('table',{className:'form'}); 
+      const tb=el('tbody');
+      const row=(label,input)=>{ 
+        const tr=el('tr'); 
+        tr.append(el('th',{},label), el('td',{},input)); 
+        tb.append(tr); 
+      };
+      
+      row('Min RPM', num(motorConfig,'min_rpm',1));
+      row('Max RPM', num(motorConfig,'max_rpm',1));
+      row('Scale', num(motorConfig,'scale_factor',0.1));
+      row('Offset', num(motorConfig,'offset',0.1));
+      
+      const saveConfigBtn = el('button',{className:'btn', onclick:async()=>{
+        try {
+          // Update the specific motor in the array
+          const fullData = await (await fetch('/api/motors')).json();
+          fullData.motors[w.opts.motorIndex] = motorConfig;
+          await fetch('/api/motors',{
+            method:'PUT',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(fullData)
+          });
+          alert('Motor config saved');
+          await refreshConfig(); // Refresh after save
+        } catch(e) { 
+          console.warn('Motor config save failed', e);
+          alert('Save failed: ' + e.message);
+        }
+      }}, 'Save Config');
+      
+      tbl.append(tb);
+      ctr.append(tbl, el('div',{style:'margin:6px 0'}, saveConfigBtn));
+    });
+    
+    // Manual control section
+    const manualRPM = el('input',{type:'number', value:0, step:10, style:'width:100px'});
+    const setBtn = el('button',{className:'btn', onclick:async()=>{
+      try {
+        const response = await fetch(`/api/motors/${w.opts.motorIndex}/rpm`, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({rpm: parseFloat(manualRPM.value)||0})
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          console.error('Motor set RPM failed:', text);
+        }
+      } catch(e) { 
+        console.warn('Motor set failed', e); 
+      }
+    }}, 'Set RPM');
+    
+    const enableBtn = el('button',{className:'btn', onclick:async()=>{
+      try {
+        const response = await fetch(`/api/motors/${w.opts.motorIndex}/enable`, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'}
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          console.error('Motor enable failed:', text);
+        } else {
+          const result = await response.json();
+          console.log('Motor enable response:', result);
+          await refreshConfig(); // Refresh config after enable
+        }
+      } catch(e) { 
+        console.warn('Motor enable failed', e); 
+      }
+    }}, 'Enable');
+    
+    const disableBtn = el('button',{className:'btn danger', onclick:async()=>{
+      try {
+        const response = await fetch(`/api/motors/${w.opts.motorIndex}/disable`, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'}
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          console.error('Motor disable failed:', text);
+        } else {
+          const result = await response.json();
+          console.log('Motor disable response:', result);
+          await refreshConfig(); // Refresh config after disable
+        }
+      } catch(e) { 
+        console.warn('Motor disable failed', e); 
+      }
+    }}, 'Disable');
+    
+    ctr.append(
+      el('hr',{className:'soft'}),
+      el('div',{style:'margin:6px 0'}, [
+        el('label',{},'Manual RPM: '),
+        manualRPM,
+        setBtn
+      ]),
+      el('div',{style:'margin:6px 0;display:flex;gap:6px'}, [enableBtn, disableBtn])
+    );
+    body.append(ctr);
+  }
+
+  (function update(){
+    if (state.motors && state.motors[w.opts.motorIndex]) {
+      const motor = state.motors[w.opts.motorIndex];
+      const p=$('#motor_'+w.id);
+      if(p){
+        const enabledText = currentConfig ? (currentConfig.enabled ? 'EN' : 'DIS') : '?';
+        p.textContent=`Input: ${(motor.input??0).toFixed(3)}, RPM: ${(motor.rpm_cmd??0).toFixed(1)}, ${enabledText}, ${motor.success?'OK':'ERR'}`;
+      }
+    }
+    requestAnimationFrame(update);
+  })();
 }
 
 /* ------------------------ tick / read / drag ---------------------------- */
@@ -1959,6 +2177,11 @@ function normalizeLayoutPages(pages){
       case 'pidpanel':
         w.opts.title = w.opts.title ?? 'PID';
         // leave other PID fields as-is; panel reads current config
+        break;
+      case 'motor':
+        w.opts.title = w.opts.title ?? 'Motor';
+        w.opts.motorIndex = Number.isInteger(w.opts.motorIndex) ? w.opts.motorIndex : 0;
+        w.opts.showControls = (w.opts.showControls !== false);
         break;
     }
     // ensure position/size exist so renderPage doesn’t choke
@@ -2093,8 +2316,10 @@ async function openConfigForm(){
 
 async function openPidForm(){
   const pid=await (await fetch('/api/pid')).json();
+  const loops = pid.loops || [];
 
   const root = el('div', {});
+  const title = el('h2', {}, 'PID Loops');
 
   // Add Load from File button
   const loadBtn = el('button', {
@@ -2117,34 +2342,294 @@ async function openPidForm(){
     }
   }, '📁 Load from File');
 
-  const rows=(pid.loops||[]).map((L,idx)=>[
-    `Loop ${idx} enabled`, inputChk(L,'enabled'),
-    `name`,  inputText(L,'name'),
-    `kind`,  selectEnum(['analog','digital','tc','calc'], L.kind||'analog', v=>L.kind=v),
-    `src`,   selectEnum(['ai','tc','calc'], L.src||'ai', v=>L.src=v),
-    `ai_ch`, inputNum(L,'ai_ch',1),
-    `out_ch`,inputNum(L,'out_ch',1),
-    `target`,inputNum(L,'target',0.0001),
-    `kp`,    inputNum(L,'kp',0.0001),
-    `ki`,    inputNum(L,'ki',0.0001),
-    `kd`,    inputNum(L,'kd',0.0001),
-    `out_min`,inputNum(L,'out_min',0.0001),
-    `out_max`,inputNum(L,'out_max',0.0001),
-    `err_min`,inputNum(L,'err_min',0.0001),
-    `err_max`,inputNum(L,'err_max',0.0001),
-    `i_min`,  inputNum(L,'i_min',0.0001),
-    `i_max`,  inputNum(L,'i_max',0.0001)
-  ]);
-  const fs=fieldset('PID Loops', tableFormRows(rows));
+  // Add Loop button
+  const addBtn = el('button', {
+    className: 'btn',
+    onclick: () => {
+      loops.push({
+        enabled: false,
+        kind: 'analog',
+        src: 'ai',
+        ai_ch: 0,
+        out_ch: 0,
+        target: 0.0,
+        kp: 1.0,
+        ki: 0.0,
+        kd: 0.0,
+        out_min: -10.0,
+        out_max: 10.0,
+        err_min: null,
+        err_max: null,
+        i_min: null,
+        i_max: null,
+        name: `Loop${loops.length}`
+      });
+      // Rebuild the form
+      buildForm();
+    }
+  }, '+ Add Loop');
+
+  const formContainer = el('div', {});
+
+  const buildForm = () => {
+    formContainer.innerHTML = '';
+    
+    const table = el('table', {className:'form'});
+    const thead = el('thead');
+    thead.append(el('tr', {}, [
+      el('th', {}, '#'),
+      el('th', {}, 'Enabled'),
+      el('th', {}, 'Name'),
+      el('th', {}, 'Kind'),
+      el('th', {}, 'Src'),
+      el('th', {}, 'AI Ch'),
+      el('th', {}, 'Out Ch'),
+      el('th', {}, 'Target'),
+      el('th', {}, 'Kp'),
+      el('th', {}, 'Ki'),
+      el('th', {}, 'Kd'),
+      el('th', {}, 'Out Min'),
+      el('th', {}, 'Out Max'),
+      el('th', {}, 'Err Min'),
+      el('th', {}, 'Err Max'),
+      el('th', {}, 'I Min'),
+      el('th', {}, 'I Max'),
+      el('th', {}, 'Actions')
+    ]));
+    
+    const tbody = el('tbody');
+    
+    loops.forEach((L, idx) => {
+      const removeBtn = el('button', {
+        className: 'btn danger',
+        onclick: () => {
+          if (confirm(`Remove Loop ${idx} (${L.name})?`)) {
+            loops.splice(idx, 1);
+            buildForm();
+          }
+        }
+      }, '×');
+      
+      const tr = el('tr', {}, [
+        el('td', {}, `${idx}`),
+        el('td', {}, chk(L, 'enabled')),
+        el('td', {}, txt(L, 'name')),
+        el('td', {}, selectEnum(['analog','digital','var','tc','calc'], L.kind||'analog', v=>L.kind=v)),
+        el('td', {}, selectEnum(['ai','tc','calc'], L.src||'ai', v=>L.src=v)),
+        el('td', {}, num(L, 'ai_ch', 1)),
+        el('td', {}, num(L, 'out_ch', 1)),
+        el('td', {}, num(L, 'target', 0.0001)),
+        el('td', {}, num(L, 'kp', 0.0001)),
+        el('td', {}, num(L, 'ki', 0.0001)),
+        el('td', {}, num(L, 'kd', 0.0001)),
+        el('td', {}, num(L, 'out_min', 0.0001)),
+        el('td', {}, num(L, 'out_max', 0.0001)),
+        el('td', {}, num(L, 'err_min', 0.0001)),
+        el('td', {}, num(L, 'err_max', 0.0001)),
+        el('td', {}, num(L, 'i_min', 0.0001)),
+        el('td', {}, num(L, 'i_max', 0.0001)),
+        el('td', {}, removeBtn)
+      ]);
+      tbody.append(tr);
+    });
+    
+    table.append(thead, tbody);
+    formContainer.append(table);
+  };
+
+  buildForm();
+
   const save=el('button',{className:'btn',onclick:async()=>{
-    try{ await fetch('/api/pid',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(pid)}); alert('Saved'); }
+    try{ 
+      await fetch('/api/pid',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({loops: loops})}); 
+      alert('Saved'); 
+    }
     catch(e){ alert('Save failed: '+e.message); }
   }},'Save');
 
   root.append(
-    el('div', {style: 'display:flex;gap:8px;margin-bottom:12px'}, [loadBtn]),
-    fs,
+    title,
+    el('div', {style: 'display:flex;gap:8px;margin-bottom:12px'}, [loadBtn, addBtn]),
+    el('div', {style: 'overflow:auto;max-height:60vh'}, formContainer),
     el('div',{style:'margin-top:8px'}, save)
+  );
+  showModal(root, ()=>{ renderPage(); });
+}
+
+async function openMotorEditor(){
+  const motor_data = await (await fetch('/api/motors')).json();
+  const motors = motor_data.motors || [];
+  
+  // Fetch available COM ports
+  let ports = [];
+  try {
+    const portsResp = await fetch('/api/motors/ports');
+    const portsData = await portsResp.json();
+    ports = portsData.ports || [];
+  } catch(e) {
+    console.warn('Failed to fetch COM ports:', e);
+  }
+
+  const root = el('div', {});
+  const title = el('h2', {}, 'Motor Controllers');
+  
+  // Load from file button
+  const loadBtn = el('button', {
+    className: 'btn',
+    onclick: () => {
+      const inp = el('input', {type: 'file', accept: '.json'});
+      inp.onchange = async () => {
+        const f = inp.files?.[0];
+        if (!f) return;
+        try {
+          const text = await f.text();
+          const loaded = JSON.parse(text);
+          Object.assign(motor_data, loaded);
+          alert('Motor config loaded! Close and reopen to see changes, or click Save to apply.');
+        } catch(e) {
+          alert('Failed to load motor config: ' + e.message);
+        }
+      };
+      inp.click();
+    }
+  }, '📁 Load from File');
+
+  // Add Motor button
+  const addBtn = el('button', {
+    className: 'btn',
+    onclick: () => {
+      motors.push({
+        name: `Motor${motors.length}`,
+        port: 'COM1',
+        baudrate: 9600,
+        address: 1,
+        min_rpm: 0,
+        max_rpm: 2500,
+        input_source: 'ai',
+        input_channel: 0,
+        input_min: 0,
+        input_max: 10,
+        scale_factor: 250,
+        offset: 0,
+        cw_positive: true,
+        enabled: false,
+        include: false
+      });
+      buildForm();
+    }
+  }, '+ Add Motor');
+
+  const formContainer = el('div', {});
+
+  const buildForm = () => {
+    formContainer.innerHTML = '';
+    
+    // Build form for each motor
+    const table = el('table', {className:'form'});
+    const thead = el('thead');
+    thead.append(el('tr', {}, [
+      el('th', {}, 'Motor #'),
+      el('th', {}, 'Include'),
+      el('th', {}, 'Enabled'),
+      el('th', {}, 'Name'),
+      el('th', {}, 'COM Port'),
+      el('th', {}, 'Baudrate'),
+      el('th', {}, 'Address'),
+      el('th', {}, 'Min RPM'),
+      el('th', {}, 'Max RPM'),
+      el('th', {}, 'Input Src'),
+      el('th', {}, 'Input Ch'),
+      el('th', {}, 'Input Min'),
+      el('th', {}, 'Input Max'),
+      el('th', {}, 'Scale'),
+      el('th', {}, 'Offset'),
+      el('th', {}, 'CW+'),
+      el('th', {}, 'Actions')
+    ]));
+    
+    const tbody = el('tbody');
+
+    motors.forEach((M, idx) => {
+      const portSelect = el('select', {});
+      if (ports.length > 0) {
+        ports.forEach(p => {
+          portSelect.append(el('option', {value: p.port}, `${p.port} - ${p.description}`));
+        });
+      } else {
+        // Fallback COM ports if query failed
+        for (let i = 1; i <= 20; i++) {
+          portSelect.append(el('option', {value: `COM${i}`}, `COM${i}`));
+        }
+      }
+      portSelect.value = M.port || 'COM1';
+      portSelect.onchange = () => M.port = portSelect.value;
+
+      const srcSelect = selectEnum(['ai', 'ao', 'tc', 'pid'], M.input_source || 'ai', v => M.input_source = v);
+
+      const removeBtn = el('button', {
+        className: 'btn danger',
+        onclick: () => {
+          if (confirm(`Remove Motor ${idx} (${M.name})?`)) {
+            motors.splice(idx, 1);
+            buildForm();
+          }
+        }
+      }, '×');
+
+      const tr = el('tr', {}, [
+        el('td', {}, `${idx}`),
+        el('td', {}, chk(M, 'include')),
+        el('td', {}, chk(M, 'enabled')),
+        el('td', {}, txt(M, 'name')),
+        el('td', {}, portSelect),
+        el('td', {}, num(M, 'baudrate', 1)),
+        el('td', {}, num(M, 'address', 1)),
+        el('td', {}, num(M, 'min_rpm', 1)),
+        el('td', {}, num(M, 'max_rpm', 1)),
+        el('td', {}, srcSelect),
+        el('td', {}, num(M, 'input_channel', 1)),
+        el('td', {}, num(M, 'input_min', 0.01)),
+        el('td', {}, num(M, 'input_max', 0.01)),
+        el('td', {}, num(M, 'scale_factor', 0.1)),
+        el('td', {}, num(M, 'offset', 0.1)),
+        el('td', {}, chk(M, 'cw_positive')),
+        el('td', {}, removeBtn)
+      ]);
+      tbody.append(tr);
+    });
+
+    table.append(thead, tbody);
+    formContainer.append(table);
+  };
+
+  buildForm();
+
+  const save = el('button', {
+    className: 'btn',
+    onclick: async() => {
+      try {
+        await fetch('/api/motors', {
+          method:'PUT',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({motors: motors})
+        });
+        alert('Saved');
+      } catch(e) {
+        alert('Save failed: ' + e.message);
+      }
+    }
+  }, 'Save');
+
+  root.append(
+    title,
+    el('div', {style: 'display:flex;gap:8px;margin-bottom:12px'}, [loadBtn, addBtn]),
+    el('div', {style: 'margin:12px 0'}, [
+      el('p', {}, 'Configure Rattmotor YPMC-750W servo controllers:'),
+      el('p', {style: 'font-size:12px;color:var(--muted)'}, 
+        'RPM Command = Input * Scale + Offset. Negative RPM reverses motor.')
+    ]),
+    el('div', {style: 'overflow:auto;max-height:60vh'}, formContainer),
+    el('div', {style:'margin-top:8px'}, save)
   );
   showModal(root, ()=>{ renderPage(); });
 }
@@ -2514,6 +2999,13 @@ function openWidgetSettings(w){
   if (w.type==='pidpanel'){
     root.append(tableForm([
       ['Loop Index', inputNum(w.opts,'loopIndex',1)],
+      ['Show Controls', inputChk(w.opts,'showControls')]
+    ]));
+  }
+
+  if (w.type==='motor'){
+    root.append(tableForm([
+      ['Motor Index', inputNum(w.opts,'motorIndex',1)],
       ['Show Controls', inputChk(w.opts,'showControls')]
     ]));
   }

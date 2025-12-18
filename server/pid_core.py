@@ -5,7 +5,7 @@ from typing import List, Dict, Optional
 @dataclass
 class LoopDef:
     enabled: bool
-    kind: str           # "analog" | "digital"
+    kind: str           # "analog" | "digital" | "var"
     src: str            # "ai" | "tc"
     ai_ch: int
     out_ch: int         # AO idx for analog, DO idx for digital
@@ -59,20 +59,31 @@ class PIDManager:
         dt = 1.0  # approximate; the outer loop is rate-controlled
         tel = []
         for p, d in zip(self.loops, self.meta):
-            if not d.enabled: continue
-            pv = 0.0
-            if d.src == "ai":
-                pv = ai_vals[d.ai_ch]
-            elif d.src == "tc" and tc_vals:
-                pv = tc_vals[min(d.ai_ch, len(tc_vals)-1)]
-            u, err = p.step(pv, dt)
-            if d.kind == "digital":
-                bridge.set_do(d.out_ch, u >= 0.0, active_high=True)
-                ov = 1.0 if u >= 0 else 0.0
-            else:
-                lo = -10.0 if d.out_min is None else d.out_min
-                hi =  10.0 if d.out_max is None else d.out_max
-                ov = max(lo, min(hi, u))
-                bridge.set_ao(d.out_ch, ov)
-            tel.append({"name": d.name, "pv": pv, "u": u, "out": ov, "err": err})
+            if not d.enabled:
+                # Add placeholder telemetry for disabled loops to maintain indexing
+                tel.append({"name": d.name, "pv": 0.0, "u": 0.0, "out": 0.0, "err": 0.0, "enabled": False})
+                continue
+            try:
+                pv = 0.0
+                if d.src == "ai":
+                    pv = ai_vals[d.ai_ch]
+                elif d.src == "tc" and tc_vals:
+                    pv = tc_vals[min(d.ai_ch, len(tc_vals)-1)]
+                u, err = p.step(pv, dt)
+                if d.kind == "digital":
+                    bridge.set_do(d.out_ch, u >= 0.0, active_high=True)
+                    ov = 1.0 if u >= 0 else 0.0
+                elif d.kind == "var":
+                    # Variable output - no hardware write, just store U value
+                    ov = u
+                else:  # analog
+                    lo = -10.0 if d.out_min is None else d.out_min
+                    hi =  10.0 if d.out_max is None else d.out_max
+                    ov = max(lo, min(hi, u))
+                    bridge.set_ao(d.out_ch, ov)
+                tel.append({"name": d.name, "pv": pv, "u": u, "out": ov, "err": err, "enabled": True})
+            except Exception as e:
+                # Log error but continue with other PIDs
+                print(f"[PID] Loop '{d.name}' (kind={d.kind}) failed: {e}")
+                tel.append({"name": d.name, "pv": 0.0, "u": 0.0, "out": 0.0, "err": 0.0, "error": str(e), "enabled": True})
         return tel

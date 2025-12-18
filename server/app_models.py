@@ -74,6 +74,26 @@ class PIDFile(BaseModel):
 class ScriptFile(BaseModel):
     events: List[dict] = []
 
+class MotorControllerCfg(BaseModel):
+    name: str = "Motor"
+    port: str = "COM1"
+    baudrate: int = 9600
+    address: int = 1
+    min_rpm: float = 0.0
+    max_rpm: float = 2500.0
+    input_source: str = "ai"  # "ai" or "ao"
+    input_channel: int = 0
+    input_min: float = 0.0
+    input_max: float = 10.0
+    scale_factor: float = 250.0  # default: 0-10 -> 0-2500 RPM
+    offset: float = 0.0
+    cw_positive: bool = True
+    enabled: bool = False
+    include: bool = True
+
+class MotorFile(BaseModel):
+    motors: List[MotorControllerCfg] = []
+
 # sensible defaults mirroring your previous app
 
 def default_config():

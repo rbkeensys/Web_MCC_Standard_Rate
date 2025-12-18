@@ -15,9 +15,10 @@ from mcc_bridge import BRIDGE_VERSION, HAVE_MCCULW, HAVE_ULDAQ
 from pid_core import PIDManager
 from filters import OnePoleLPFBank
 from logger import SessionLogger
-from app_models import AppConfig, PIDFile, ScriptFile, default_config
+from app_models import AppConfig, PIDFile, ScriptFile, MotorFile, default_config
+from motor_controller import MotorManager, list_serial_ports
 import logging, os
-SERVER_VERSION = "0.7.2"
+SERVER_VERSION = "0.7.3"
 
 
 MCC_TICK_LOG = os.environ.get("MCC_TICK_LOG", "1") == "1"  # print 1 line per second
@@ -217,18 +218,28 @@ def _load_json_model(path: Path, model_cls: Type[BaseModel]):
             return PIDFile.model_validate({"loops": []})
         if model_cls.__name__ == "ScriptFile":
             return ScriptFile.model_validate({"events": []})
+        if model_cls.__name__ == "MotorFile":
+            return MotorFile.model_validate({"motors": []})
         return model_cls.model_validate({})
 
 app_cfg = _load_json_model(CFG_PATH, AppConfig)
 pid_file = _load_json_model(PID_PATH, PIDFile)
 script_file = _load_json_model(SCRIPT_PATH, ScriptFile)
-print("[MCC-Hub] Loaded config / pid / script")
+MOTOR_PATH = CFG_DIR / "motor.json"
+motor_file = _load_json_model(MOTOR_PATH, MotorFile)
+print("[MCC-Hub] Loaded config / pid / script / motor")
 
 mcc = MCCBridge()
 bridge = mcc  # alias for older handlers that still say 'bridge'
 
 pid_mgr = PIDManager()
 pid_mgr.load(pid_file)
+
+motor_mgr = MotorManager()
+# Initialize motors from config
+for idx, motor_cfg in enumerate(motor_file.motors):
+    if motor_cfg.include:
+        motor_mgr.add_motor(idx, motor_cfg.model_dump())
 
 # Filters per AI ch (configured by config.json -> analogs[i].cutoffHz)
 lpf = OnePoleLPFBank()
@@ -246,6 +257,8 @@ def _on_startup():
 @app.on_event("shutdown")
 def _on_shutdown():
     print("[MCC-Hub] FastAPI shutdown")
+    motor_mgr.disconnect_all()
+    print("[MCC-Hub] Motors disconnected")
 
 async def broadcast(msg: dict):
     txt = json.dumps(msg, separators=(",", ":"))  # pre-encode once
@@ -365,6 +378,55 @@ async def acq_loop():
                 bridge=mcc,
             )
 
+            # --- Motor Controllers ---
+            # Update each enabled motor based on its input source
+            motor_status = []
+            for idx, motor_cfg in enumerate(motor_file.motors):
+                if not motor_cfg.enabled or not motor_cfg.include:
+                    continue
+                
+                try:
+                    # Get input value
+                    input_val = 0.0
+                    if motor_cfg.input_source == "ai" and motor_cfg.input_channel < len(ai_scaled):
+                        input_val = ai_scaled[motor_cfg.input_channel]
+                    elif motor_cfg.input_source == "ao" and motor_cfg.input_channel < len(ao):
+                        input_val = ao[motor_cfg.input_channel]
+                    elif motor_cfg.input_source == "tc" and motor_cfg.input_channel < len(tc_vals):
+                        input_val = tc_vals[motor_cfg.input_channel]
+                    elif motor_cfg.input_source == "pid" and motor_cfg.input_channel < len(telemetry):
+                        # Get PID U (output) value
+                        pid_info = telemetry[motor_cfg.input_channel]
+                        # Use lowercase 'u' which is standard in telemetry
+                        input_val = pid_info.get('u', 0.0)
+                    
+                    # Clamp input to input range (bounds checking)
+                    input_val = max(motor_cfg.input_min, min(motor_cfg.input_max, input_val))
+                    
+                    # Calculate RPM: RPM = input * scale + offset
+                    # Direct multiplication (no normalization)
+                    # Example: input=-240, scale=1000, offset=0 -> RPM=-240000
+                    rpm = input_val * motor_cfg.scale_factor + motor_cfg.offset
+                    
+                    # Update motor
+                    success = motor_mgr.set_motor_rpm(idx, rpm, motor_cfg.cw_positive)
+                    
+                    motor_status.append({
+                        "index": idx,
+                        "input": input_val,
+                        "rpm_cmd": rpm,
+                        "success": success
+                    })
+                except Exception as e:
+                    log.error(f"Motor {idx} update failed: {e}")
+                    motor_status.append({
+                        "index": idx,
+                        "input": 0.0,
+                        "rpm_cmd": 0.0,
+                        "success": False,
+                        "error": str(e)
+                    })
+
             # Snapshot of outputs
             ao = mcc.get_ao_snapshot()
             do = mcc.get_do_snapshot()
@@ -377,6 +439,7 @@ async def acq_loop():
                 "do": do,
                 "tc": tc_vals,
                 "pid": telemetry,
+                "motors": motor_status,
             }
 
             ticks += 1
@@ -477,6 +540,87 @@ def put_script(body: dict):
     SCRIPT_PATH.write_text(json.dumps(script_file.model_dump(), indent=2))
     print("[MCC-Hub] Script updated")
     return {"ok": True}
+
+# ---------- REST: motors ----------
+
+@app.get("/api/motors")
+def get_motors():
+    return _load_json_model(MOTOR_PATH, MotorFile).model_dump()
+
+@app.put("/api/motors")
+def put_motors(body: dict):
+    global motor_file, motor_mgr
+    motor_file = MotorFile.model_validate(body)
+    MOTOR_PATH.write_text(json.dumps(motor_file.model_dump(), indent=2))
+    
+    # Reinitialize motor manager with new config
+    motor_mgr.disconnect_all()
+    for idx, motor_cfg in enumerate(motor_file.motors):
+        if motor_cfg.include:
+            motor_mgr.add_motor(idx, motor_cfg.model_dump())
+    
+    print("[MCC-Hub] Motors updated")
+    return {"ok": True}
+
+@app.get("/api/motors/ports")
+def get_serial_ports():
+    """List available COM ports"""
+    return {"ports": list_serial_ports()}
+
+@app.post("/api/motors/{index}/rpm")
+def set_motor_rpm(index: int, body: dict):
+    """Manually set motor RPM"""
+    rpm = body.get("rpm", 0.0)
+    success = motor_mgr.set_motor_rpm(index, rpm)
+    return {"ok": success}
+
+@app.post("/api/motors/{index}/enable")
+def enable_motor(index: int):
+    """Enable motor"""
+    global motor_file
+    
+    if index >= len(motor_file.motors):
+        return {"ok": False, "error": "Motor index out of range"}
+    
+    # Update the enabled flag in config
+    motor_file.motors[index].enabled = True
+    MOTOR_PATH.write_text(json.dumps(motor_file.model_dump(), indent=2))
+    
+    # Enable hardware if motor is in manager
+    if index in motor_mgr.motors:
+        success = motor_mgr.motors[index].enable_motor()
+        return {"ok": success, "enabled": True}
+    
+    return {"ok": True, "enabled": True, "note": "Config updated, motor not initialized (check include)"}
+
+@app.post("/api/motors/{index}/disable")
+def disable_motor(index: int):
+    """Disable motor"""
+    global motor_file
+    
+    if index >= len(motor_file.motors):
+        return {"ok": False, "error": "Motor index out of range"}
+    
+    # Update the enabled flag in config
+    motor_file.motors[index].enabled = False
+    MOTOR_PATH.write_text(json.dumps(motor_file.model_dump(), indent=2))
+    
+    # Disable hardware and stop motor
+    if index in motor_mgr.motors:
+        # Send stop command (0 RPM)
+        motor_mgr.set_motor_rpm(index, 0, motor_file.motors[index].cw_positive)
+        success = motor_mgr.motors[index].disable_motor()
+        return {"ok": success, "enabled": False}
+    
+    return {"ok": True, "enabled": False, "note": "Config updated, motor not initialized (check include)"}
+
+@app.get("/api/motors/{index}/status")
+def get_motor_status(index: int):
+    """Get motor status"""
+    status = motor_mgr.get_motor_status(index)
+    if status:
+        return status
+    return {"error": "Motor not found"}
 
 # ---------- REST: control ----------
 
