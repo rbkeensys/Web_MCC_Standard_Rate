@@ -1,0 +1,120 @@
+{
+  "pages": [
+    {
+      "name": "Page 1",
+      "widgets": [
+        {
+          "id": "599966ae-26b4-45f5-b77e-3799b06fb281",
+          "type": "chart",
+          "x": 18,
+          "y": 15,
+          "w": 1665,
+          "h": 813,
+          "opts": {
+            "title": "Counter Flow Test",
+            "series": [
+              {
+                "kind": "tc",
+                "index": 0,
+                "name": "Cold Water"
+              },
+              {
+                "kind": "tc",
+                "index": 1,
+                "name": "Lower Air"
+              },
+              {
+                "kind": "tc",
+                "index": 2,
+                "name": "Warm Water"
+              },
+              {
+                "kind": "tc",
+                "index": 3,
+                "name": "Outlet Air"
+              },
+              {
+                "kind": "tc",
+                "index": 4,
+                "name": "Ambient Air"
+              }
+            ],
+            "span": 100,
+            "paused": false,
+            "scale": "manual",
+            "min": 0,
+            "max": 23,
+            "filterHz": 0.1,
+            "cursorMode": "follow",
+            "yGridLines": 10
+          },
+          "view": {
+            "span": 100,
+            "paused": false,
+            "tFreeze": 0
+          }
+        },
+        {
+          "id": "e495fb81-8baa-4e70-adf2-72d6952bd128",
+          "type": "pidpanel",
+          "x": 1763,
+          "y": 19,
+          "w": 280,
+          "h": 604,
+          "opts": {
+            "title": "PID: Outlet D",
+            "loopIndex": 0,
+            "showControls": true
+          }
+        },
+        {
+          "id": "6e327088-6b7e-49f4-9581-02837baa6235",
+          "type": "dobutton",
+          "x": 1778,
+          "y": 641,
+          "w": 127,
+          "h": 91,
+          "opts": {
+            "title": "DO0",
+            "doIndex": 0,
+            "activeHigh": true,
+            "mode": "momentary",
+            "buzzHz": 10,
+            "actuationTime": 0,
+            "_timer": null
+          }
+        },
+        {
+          "id": "272feb8b-66a2-4e78-80bc-5d7a3e9db1dd",
+          "type": "dobutton",
+          "x": 1909,
+          "y": 642,
+          "w": 120,
+          "h": 90,
+          "opts": {
+            "title": "DO1",
+            "doIndex": 1,
+            "activeHigh": true,
+            "mode": "momentary",
+            "buzzHz": 10,
+            "actuationTime": 0,
+            "_timer": null
+          }
+        },
+        {
+          "id": "e5441ea7-2311-4b4f-9896-346613e011fd",
+          "type": "motor",
+          "x": 1741,
+          "y": 752,
+          "w": 323,
+          "h": 337,
+          "opts": {
+            "title": "Motor",
+            "motorIndex": 0,
+            "showControls": true
+          }
+        }
+      ]
+    }
+  ]
+}

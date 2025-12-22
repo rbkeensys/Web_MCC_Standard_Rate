@@ -27,6 +27,7 @@ class DigitalOutCfg(BaseModel):
     momentary: bool = False
     actuationTime: float = 0.0
     include: bool = True
+    logicElement: Optional[int] = None  # NEW: Index of LE that gates this DO (None = no gating)
 
 class AnalogOutCfg(BaseModel):
     name: str = "AO"
@@ -34,6 +35,9 @@ class AnalogOutCfg(BaseModel):
     maxV: float = 10.0
     startupV: float = 0.0
     include: bool = True
+    enable_gate: bool = False  # Whether to gate this AO with a DO/LE
+    enable_kind: str = "do"    # 'do' or 'le'
+    enable_index: int = 0      # Which DO/LE to use as enable
 
 class ThermocoupleCfg(BaseModel):
     include: bool = True
@@ -67,6 +71,9 @@ class PIDRec(BaseModel):
     i_min: Optional[float] = None
     i_max: Optional[float] = None
     name: str = ""
+    enable_gate: bool = False
+    enable_kind: str = "do"
+    enable_index: int = 0
 
 class PIDFile(BaseModel):
     loops: List[PIDRec] = []
@@ -90,18 +97,39 @@ class MotorControllerCfg(BaseModel):
     cw_positive: bool = True
     enabled: bool = False
     include: bool = True
+    logicElement: Optional[int] = None  # NEW: Index of LE that enables this motor (None = no gating)
 
 class MotorFile(BaseModel):
     motors: List[MotorControllerCfg] = []
 
-# sensible defaults mirroring your previous app
+# NEW: Logic Element models
+class LEInputCfg(BaseModel):
+    kind: str = "do"  # "do", "ai", "ao", "tc", "pid_u", "le"
+    index: int = 0
+    # For analog values:
+    comparison: Optional[str] = None  # "lt", "eq", "gt"
+    compare_to_type: Optional[str] = None  # "value" or "signal"
+    compare_value: Optional[float] = None
+    compare_to_kind: Optional[str] = None  # "ai", "ao", "tc", "pid_u"
+    compare_to_index: Optional[int] = None
 
+class LogicElementCfg(BaseModel):
+    enabled: bool = True
+    name: str = "LE"
+    input_a: LEInputCfg
+    input_b: LEInputCfg
+    operation: str = "and"  # "and", "or", "xor", "nand", "nor", "nxor"
+
+class LEFile(BaseModel):
+    elements: List[LogicElementCfg] = []
+
+# sensible defaults mirroring your previous app
 def default_config():
     return {
         "board1608": {"boardNum": 0, "sampleRateHz": 100.0, "blockSize": 128, "aiMode": "SE"},
         "boardetc":  {"boardNum": 1, "sampleRateHz": 10.0,  "blockSize": 1},
         "analogs":   [{"name": f"AI{i}", "slope": 1.0, "offset": 0.0, "cutoffHz": 0.0, "units": "", "include": True} for i in range(8)],
-        "digitalOutputs": [{"name": f"DO{i}", "normallyOpen": True, "momentary": False, "actuationTime": 0.0, "include": True} for i in range(8)],
+        "digitalOutputs": [{"name": f"DO{i}", "normallyOpen": True, "momentary": False, "actuationTime": 0.0, "include": True, "logicElement": None} for i in range(8)],
         "analogOutputs":  [{"name": f"AO{i}", "minV":0, "maxV":10, "startupV":0, "include": True} for i in range(2)],
         "thermocouples":  [{"include": True, "ch": i, "name": f"TC{i}", "type": "K", "offset": 0.0} for i in range(8)],
     }

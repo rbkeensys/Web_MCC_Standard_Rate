@@ -1,0 +1,167 @@
+{
+  "pages": [
+    {
+      "name": "Page 1",
+      "widgets": [
+        {
+          "id": "b9f8a4ba-466f-463b-a7b4-899dc645f696",
+          "type": "dobutton",
+          "x": 50,
+          "y": 700,
+          "w": 120,
+          "h": 90,
+          "opts": {
+            "title": "DO",
+            "doIndex": 0,
+            "activeHigh": false,
+            "mode": "toggle",
+            "buzzHz": 10,
+            "actuationTime": 0,
+            "_timer": null
+          }
+        },
+        {
+          "id": "3c417bb2-ad99-4d6a-a317-b3d250813314",
+          "type": "gauge",
+          "x": 654,
+          "y": 9,
+          "w": 460,
+          "h": 340,
+          "opts": {
+            "title": "Gauge",
+            "needles": [
+              {
+                "kind": "ao",
+                "index": 0,
+                "name": "AO0_rpm CMD"
+              },
+              {
+                "kind": "ai",
+                "index": 1,
+                "name": "FB"
+              }
+            ],
+            "scale": "manual",
+            "min": 0,
+            "max": 10
+          }
+        },
+        {
+          "id": "0222bff0-4abc-4730-9d20-39721693589b",
+          "type": "gauge",
+          "x": 1118,
+          "y": 9,
+          "w": 428,
+          "h": 339,
+          "opts": {
+            "title": "Gauge2",
+            "needles": [
+              {
+                "kind": "ai",
+                "index": 0,
+                "name": "Pressure"
+              }
+            ],
+            "scale": "manual",
+            "min": -0.05,
+            "max": 0.025
+          }
+        },
+        {
+          "id": "b843ffb9-fea8-4e84-9b65-05f9f28e6746",
+          "type": "le",
+          "x": 365,
+          "y": 10,
+          "w": 280,
+          "h": 160,
+          "opts": {
+            "title": "Logic Element",
+            "leIndex": 0,
+            "showInputs": true
+          }
+        },
+        {
+          "id": "7841182c-9676-49c9-88f9-d5a1afe03f5d",
+          "type": "dobutton",
+          "x": 54,
+          "y": 829,
+          "w": 120,
+          "h": 90,
+          "opts": {
+            "title": "DO1",
+            "doIndex": 1,
+            "activeHigh": false,
+            "mode": "momentary",
+            "buzzHz": 10,
+            "actuationTime": 0,
+            "_timer": null
+          }
+        },
+        {
+          "id": "f25e74ae-9f06-414a-adb9-3548c4866a8f",
+          "type": "pidpanel",
+          "x": 40,
+          "y": 40,
+          "w": 280,
+          "h": 619,
+          "opts": {
+            "title": "PID: Motor CMD",
+            "loopIndex": 0,
+            "showControls": true
+          }
+        },
+        {
+          "id": "36a8db34-968a-4f8a-8779-d7dfb870a1ee",
+          "type": "chart",
+          "x": 331,
+          "y": 358,
+          "w": 1687,
+          "h": 654,
+          "opts": {
+            "title": "Chart",
+            "series": [
+              {
+                "kind": "tc",
+                "index": 0,
+                "name": "Inlet"
+              },
+              {
+                "kind": "tc",
+                "index": 1,
+                "name": "Bottom Air"
+              },
+              {
+                "kind": "tc",
+                "index": 2,
+                "name": "Outlet"
+              },
+              {
+                "kind": "tc",
+                "index": 3,
+                "name": "Outlet Air"
+              },
+              {
+                "kind": "tc",
+                "index": 4,
+                "name": "Ambient"
+              }
+            ],
+            "span": 60,
+            "paused": false,
+            "scale": "auto",
+            "min": 0,
+            "max": 10,
+            "filterHz": 0,
+            "cursorMode": "follow",
+            "yGridLines": 5
+          },
+          "view": {
+            "span": 60,
+            "paused": false,
+            "tFreeze": 0
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -17,8 +17,10 @@ from filters import OnePoleLPFBank
 from logger import SessionLogger
 from app_models import AppConfig, PIDFile, ScriptFile, MotorFile, default_config
 from motor_controller import MotorManager, list_serial_ports
+from logic_elements import LEManager
+from app_models import LEFile, LogicElementCfg
 import logging, os
-SERVER_VERSION = "0.7.3"
+SERVER_VERSION = "0.8.4"  # PID continues calculating when gated, just doesn't write output
 
 
 MCC_TICK_LOG = os.environ.get("MCC_TICK_LOG", "1") == "1"  # print 1 line per second
@@ -236,6 +238,32 @@ pid_mgr = PIDManager()
 pid_mgr.load(pid_file)
 
 motor_mgr = MotorManager()
+
+# Logic Elements
+le_mgr = LEManager()
+LE_PATH = CFG_DIR / "logic_elements.json"
+
+def load_le():
+    global le_mgr
+    if LE_PATH.exists():
+        try:
+            data = json.loads(LE_PATH.read_text())
+            le_mgr.load(data)
+            log.info(f"[LE] Loaded {len(le_mgr.elements)} logic elements")
+        except Exception as e:
+            log.error(f"[LE] Failed to load: {e}")
+            le_mgr = LEManager()
+    else:
+        log.info("[LE] No logic_elements.json found, creating default")
+        LE_PATH.write_text(json.dumps({"elements": []}, indent=2))
+
+load_le()
+
+# AO Enable Gate Tracking
+# Track desired values separately from what's actually written to hardware
+ao_desired_values = [0.0, 0.0]  # Desired voltage for each AO
+ao_last_gate_state = [True, True]  # Track if gate was enabled last tick
+
 # Initialize motors from config
 for idx, motor_cfg in enumerate(motor_file.motors):
     if motor_cfg.include:
@@ -314,6 +342,24 @@ async def acq_loop():
     try:
         mcc.open(app_cfg)
         print("[MCC-Hub] Hardware open() complete")
+        
+        # Initialize analog outputs to startup values
+        # Set multiple times because hardware may reset to default (often 1V for AO0)
+        print("[MCC-Hub] Initializing AOs to startup values...")
+        for attempt in range(3):  # Try 3 times
+            for i, ao_cfg in enumerate(app_cfg.analogOutputs):
+                if ao_cfg.include:
+                    try:
+                        mcc.set_ao(i, ao_cfg.startupV)
+                        if attempt == 0:
+                            print(f"[MCC-Hub]   AO{i} -> {ao_cfg.startupV}V (startup)")
+                    except Exception as e:
+                        if attempt == 0:
+                            print(f"[MCC-Hub]   AO{i} FAILED: {e}")
+            await asyncio.sleep(0.05)  # Small delay between attempts
+        
+        print("[MCC-Hub] AO initialization complete")
+        
     except Exception as e:
         print(f"[MCC-Hub] Hardware open() failed: {e}")
 
@@ -371,12 +417,84 @@ async def acq_loop():
                 y = lpf.apply(i, y)
                 ai_scaled.append(y)
 
+            # Get DO/AO snapshot BEFORE PID and LE evaluation
+            # (needed for both LE inputs and PID gate checking)
+            ao = mcc.get_ao_snapshot()
+            do = mcc.get_do_snapshot()
+
+            # --- Logic Elements ---
+            # Evaluate BEFORE PIDs so PIDs can use LE outputs as enable gates
+            le_outputs = le_mgr.evaluate_all({
+                "ai": ai_scaled,
+                "ao": ao,
+                "do": do,
+                "tc": tc_vals,
+                "pid": []  # PIDs haven't run yet
+            })
+            le_tel = le_mgr.get_telemetry()
+
             # --- PIDs (may drive DO/AO) ---
+            # Pass DO/LE state so PIDs can check their enable gates
             telemetry = pid_mgr.step(
                 ai_vals=ai_scaled,
                 tc_vals=tc_vals,
                 bridge=mcc,
+                do_state=do,
+                le_state=le_tel
             )
+
+            # --- Logic Elements (Re-evaluation) ---
+            # Re-evaluate LEs after PIDs so LEs can use PID outputs as inputs
+            le_outputs = le_mgr.evaluate_all({
+                "ai": ai_scaled,
+                "ao": ao,
+                "do": do,
+                "tc": tc_vals,
+                "pid": telemetry
+            })
+            le_tel = le_mgr.get_telemetry()
+
+            # --- AO Enable Gating ---
+            # Check gates and apply/restore values as needed
+            global ao_desired_values, ao_last_gate_state
+            
+            for i, ao_cfg in enumerate(app_cfg.analogOutputs):
+                if not ao_cfg.include:
+                    continue
+                    
+                if ao_cfg.enable_gate:
+                    # Check the enable signal
+                    enable_signal = False
+                    
+                    if ao_cfg.enable_kind == "do":
+                        if ao_cfg.enable_index < len(do):
+                            enable_signal = bool(do[ao_cfg.enable_index])
+                    elif ao_cfg.enable_kind == "le":
+                        if ao_cfg.enable_index < len(le_tel):
+                            enable_signal = le_tel[ao_cfg.enable_index].get("output", False)
+                    
+                    # Check for state transitions
+                    was_enabled = ao_last_gate_state[i] if i < len(ao_last_gate_state) else True
+                    
+                    if enable_signal and not was_enabled:
+                        # Transition: disabled -> enabled
+                        # Restore the desired value
+                        try:
+                            mcc.set_ao(i, ao_desired_values[i])
+                        except Exception as e:
+                            print(f"[AO] Failed to restore AO{i} to {ao_desired_values[i]}V: {e}")
+                    elif not enable_signal and was_enabled:
+                        # Transition: enabled -> disabled
+                        # Force to 0V
+                        try:
+                            mcc.set_ao(i, 0.0)
+                        except Exception as e:
+                            print(f"[AO] Failed to gate AO{i} to 0V: {e}")
+                    # If state hasn't changed, don't write (avoid unnecessary traffic)
+                    
+                    # Update last state
+                    if i < len(ao_last_gate_state):
+                        ao_last_gate_state[i] = enable_signal
 
             # --- Motor Controllers ---
             # Update each enabled motor based on its input source
@@ -427,10 +545,6 @@ async def acq_loop():
                         "error": str(e)
                     })
 
-            # Snapshot of outputs
-            ao = mcc.get_ao_snapshot()
-            do = mcc.get_do_snapshot()
-
             frame = {
                 "type": "tick",
                 "t": time.time(),
@@ -440,6 +554,7 @@ async def acq_loop():
                 "tc": tc_vals,
                 "pid": telemetry,
                 "motors": motor_status,
+                "le": le_tel,
             }
 
             ticks += 1
@@ -567,6 +682,27 @@ def get_serial_ports():
     """List available COM ports"""
     return {"ports": list_serial_ports()}
 
+
+@app.get("/api/logic_elements")
+def get_logic_elements():
+    """Get logic element configuration"""
+    if LE_PATH.exists():
+        try:
+            return json.loads(LE_PATH.read_text())
+        except:
+            pass
+    return {"elements": []}
+
+@app.put("/api/logic_elements")
+def put_logic_elements(data: LEFile):
+    """Update logic element configuration"""
+    try:
+        LE_PATH.write_text(json.dumps(data.dict(), indent=2))
+        load_le()
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 @app.post("/api/motors/{index}/rpm")
 def set_motor_rpm(index: int, body: dict):
     """Manually set motor RPM"""
@@ -643,8 +779,27 @@ def set_rate(req: RateReq):
 
 @app.post("/api/do/set")
 def set_do(req: DOReq):
-    #print(f"[CMD] DO{req.index} <- {req.state} (active_high={req.active_high})")
-    mcc.set_do(req.index, req.state, active_high=req.active_high)
+    idx = req.index
+    target_state = req.state
+    active_high = req.active_high
+    #print(f"[CMD] DO{idx} <- {target_state} (active_high={active_high})")
+    
+    # Check if this DO is gated by a logic element
+    try:
+        cfg = mcc.cfg
+        if idx < len(cfg.digitalOutputs):
+            do_cfg = cfg.digitalOutputs[idx]
+            le_index = getattr(do_cfg, "logicElement", None)
+            
+            if le_index is not None and 0 <= le_index < len(le_mgr.outputs):
+                le_output = le_mgr.get_output(le_index)
+                if not le_output:
+                    log.info(f"[DO] DO{idx} blocked by LE{le_index} (LE output is False)")
+                    return {"ok": False, "reason": f"Blocked by LE{le_index}"}
+    except Exception as e:
+        log.error(f"[DO] Error checking LE gate: {e}")
+    
+    mcc.set_do(idx, target_state, active_high=active_high)
     return {"ok": True}
 
 class BuzzStop(BaseModel):
@@ -662,8 +817,38 @@ async def api_buzz_stop(req: BuzzStop):
 
 @app.post("/api/ao/set")
 def set_ao(req: AOReq):
-    #print(f"[CMD] AO{req.index} <- {req.volts} V")
-    mcc.set_ao(req.index, req.volts)
+    global ao_desired_values
+    
+    # Always update the desired value
+    if 0 <= req.index < len(ao_desired_values):
+        ao_desired_values[req.index] = req.volts
+    
+    # Check if this AO has enable gating
+    ao_cfg = app_cfg.analogOutputs[req.index] if req.index < len(app_cfg.analogOutputs) else None
+    
+    if ao_cfg and ao_cfg.enable_gate:
+        # Check the gate signal
+        enable_signal = False
+        
+        if ao_cfg.enable_kind == "do":
+            do_snapshot = mcc.get_do_snapshot()
+            if ao_cfg.enable_index < len(do_snapshot):
+                enable_signal = bool(do_snapshot[ao_cfg.enable_index])
+        elif ao_cfg.enable_kind == "le":
+            le_tel = le_mgr.get_telemetry()
+            if ao_cfg.enable_index < len(le_tel):
+                enable_signal = le_tel[ao_cfg.enable_index].get("output", False)
+        
+        # Only write to hardware if enabled
+        if enable_signal:
+            mcc.set_ao(req.index, req.volts)
+        else:
+            # Gate is disabled - don't write, keep at 0V
+            mcc.set_ao(req.index, 0.0)
+    else:
+        # No gating, write directly
+        mcc.set_ao(req.index, req.volts)
+    
     return {"ok": True}
 
 # ---------- REST: logs ----------

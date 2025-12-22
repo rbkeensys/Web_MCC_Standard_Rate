@@ -4,14 +4,20 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6ee747c5-542f-43af-b33e-a97c54c29c34" name="Changes" comment="Button, Gauge, PID Panel fixes">
+    <list default="true" id="6ee747c5-542f-43af-b33e-a97c54c29c34" name="Changes" comment="MODBUS motor controls added, bug fixes on ui elements.  TODO fix the popup monitor so it doesn't disconnect when opening any json editor.">
+      <change beforePath="$PROJECT_DIR$/.idea/Web-MCC-DAQ-and-Control Fast.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Web-MCC-DAQ-and-Control Fast.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/layout.json" beforeDir="false" afterPath="$PROJECT_DIR$/layout.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/layout_2025-11-06T23-17-26-749Z.json" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/server/app_models.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/app_models.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/config/PID.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/PID.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/config/config.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/config.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/config/motor.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/motor.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/pid_core.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/pid_core.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/server.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/server.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/web/app.js" beforeDir="false" afterPath="$PROJECT_DIR$/web/app.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/web/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/web/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/web/styles.css" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -44,17 +50,22 @@
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.MCC Web App.executor": "Run",
     "Python.mcc_bridge.executor": "Run",
     "Python.server.executor": "Run",
     "Python.test_pid_var.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "master"
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "ai.playground.ignore.import.keys.banner.in.settings": "true",
+    "git-widget-placeholder": "master",
+    "last_opened_file_path": "C:/Users/russ/Desktop/Web MCC App/Fast Bak1/Web-MCC-DAQ-and-Control Fast",
+    "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
   <component name="RunManager">
-    <configuration name="test_pid_var" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+    <configuration name="MCC Web App" type="PythonConfigurationType" factoryName="Python" temporary="true">
       <module name="Web-MCC-DAQ-and-Control Fast" />
       <option name="ENV_FILES" value="" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -63,11 +74,14 @@
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
       <option name="SDK_HOME" value="" />
+      <option name="SDK_NAME" value="Python 3.14 (Web-MCC-DAQ-and-Control Fast w LE)" />
       <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/server" />
-      <option name="IS_MODULE_SDK" value="true" />
+      <option name="IS_MODULE_SDK" value="false" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/server/test_pid_var.py" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="RUN_TOOL" value="" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/server/server.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -78,14 +92,15 @@
     </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.test_pid_var" />
+        <item itemvalue="Python.MCC Web App" />
       </list>
     </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-python-sdk-7e47963ff851-f0eec537fc84-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-252.23892.515" />
+        <option value="bundled-js-predefined-d6986cc7102b-9b0f141eb926-JavaScript-PY-253.29346.142" />
+        <option value="bundled-python-sdk-f2b7a9f6281b-6e1f45a539f7-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-253.29346.142" />
       </set>
     </attachedChunks>
   </component>
@@ -96,6 +111,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1763391021376</updated>
+      <workItem from="1766425526988" duration="4319000" />
     </task>
     <task id="LOCAL-00001" summary="Working standard rate, now has all editors working config, PID, script.  Scripts run too.">
       <option name="closed" value="true" />
@@ -137,15 +153,35 @@
       <option name="project" value="LOCAL" />
       <updated>1765994798505</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="MODBUS motor controls added, bug fixes on ui elements.  TODO fix the popup monitor so it doesn't disconnect when opening any json editor.">
+      <option name="closed" value="true" />
+      <created>1766093680428</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1766093680428</updated>
+    </task>
+    <task id="LOCAL-00007" summary="MODBUS motor controls added, bug fixes on ui elements.  TODO fix the popup monitor so it doesn't disconnect when opening any json editor.">
+      <option name="closed" value="true" />
+      <created>1766093721631</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1766093721631</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Working standard rate, now has all editors working config, PID, script.  Scripts run too." />
     <MESSAGE value="Added auto TC detect and skip missing/open at runtime." />
     <MESSAGE value="Fixed some ui issues.&#10;TODO: Add close log and restart" />
     <MESSAGE value="Button, Gauge, PID Panel fixes" />
-    <option name="LAST_COMMIT_MESSAGE" value="Button, Gauge, PID Panel fixes" />
+    <MESSAGE value="MODBUS motor controls added, bug fixes on ui elements.  TODO fix the popup monitor so it doesn't disconnect when opening any json editor." />
+    <option name="LAST_COMMIT_MESSAGE" value="MODBUS motor controls added, bug fixes on ui elements.  TODO fix the popup monitor so it doesn't disconnect when opening any json editor." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -157,5 +193,8 @@
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/server_py$MCC_Web_App.coverage" NAME="MCC Web App Coverage Results" MODIFIED="1766442536947" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
   </component>
 </project>

@@ -7,8 +7,8 @@
   },
   "boardetc": {
     "boardNum": 1,
-    "sampleRateHz": 100.0,
-    "blockSize": 128
+    "sampleRateHz": 10.0,
+    "blockSize": 1
   },
   "analogs": [
     {
@@ -16,7 +16,7 @@
       "slope": 250.0,
       "offset": -123.2,
       "cutoffHz": 0.01,
-      "units": "",
+      "units": "psi",
       "include": true
     },
     {
@@ -24,7 +24,7 @@
       "slope": 1.0,
       "offset": 0.0,
       "cutoffHz": 10.0,
-      "units": "",
+      "units": "volts",
       "include": true
     },
     {
@@ -32,48 +32,48 @@
       "slope": 22.0,
       "offset": 32.0,
       "cutoffHz": 0.1,
-      "units": "",
-      "include": false
+      "units": "deg",
+      "include": true
     },
     {
-      "name": "Pressure",
-      "slope": 5.0,
-      "offset": -25.0,
-      "cutoffHz": 5.0,
-      "units": "",
-      "include": false
-    },
-    {
-      "name": "Spare 0",
+      "name": "AI3",
       "slope": 1.0,
       "offset": 0.0,
-      "cutoffHz": 0.1,
+      "cutoffHz": 0.0,
       "units": "",
-      "include": false
+      "include": true
     },
     {
-      "name": "Spare 1",
+      "name": "AI4",
       "slope": 1.0,
       "offset": 0.0,
-      "cutoffHz": 1.0,
+      "cutoffHz": 0.0,
       "units": "",
-      "include": false
+      "include": true
     },
     {
-      "name": "Spare 2",
+      "name": "AI5",
       "slope": 1.0,
       "offset": 0.0,
-      "cutoffHz": 2.0,
+      "cutoffHz": 0.0,
       "units": "",
-      "include": false
+      "include": true
     },
     {
-      "name": "Spare 3",
+      "name": "AI6",
       "slope": 1.0,
       "offset": 0.0,
-      "cutoffHz": 5.0,
+      "cutoffHz": 0.0,
       "units": "",
-      "include": false
+      "include": true
+    },
+    {
+      "name": "AI7",
+      "slope": 1.0,
+      "offset": 0.0,
+      "cutoffHz": 0.0,
+      "units": "",
+      "include": true
     }
   ],
   "digitalOutputs": [
@@ -81,73 +81,87 @@
       "name": "Inlet Valve",
       "normallyOpen": false,
       "momentary": false,
-      "actuationTime": 2.0,
-      "include": true
+      "actuationTime": 0.0,
+      "include": true,
+      "logicElement": null
     },
     {
       "name": "Outlet Valve",
       "normallyOpen": false,
       "momentary": false,
       "actuationTime": 0.0,
-      "include": true
+      "include": true,
+      "logicElement": null
     },
     {
       "name": "Heater",
       "normallyOpen": false,
       "momentary": false,
       "actuationTime": 0.0,
-      "include": true
+      "include": true,
+      "logicElement": null
     },
     {
-      "name": "D3",
+      "name": "DO3",
       "normallyOpen": false,
       "momentary": false,
       "actuationTime": 0.0,
-      "include": false
+      "include": true,
+      "logicElement": null
     },
     {
-      "name": "D4",
+      "name": "DO4",
       "normallyOpen": false,
       "momentary": false,
       "actuationTime": 0.0,
-      "include": false
+      "include": true,
+      "logicElement": null
     },
     {
-      "name": "D5",
+      "name": "DO5",
       "normallyOpen": false,
       "momentary": false,
       "actuationTime": 0.0,
-      "include": false
+      "include": true,
+      "logicElement": null
     },
     {
-      "name": "D6",
+      "name": "DO6",
       "normallyOpen": false,
       "momentary": false,
       "actuationTime": 0.0,
-      "include": false
+      "include": true,
+      "logicElement": null
     },
     {
-      "name": "D7",
+      "name": "DO7",
       "normallyOpen": false,
       "momentary": false,
       "actuationTime": 0.0,
-      "include": false
+      "include": true,
+      "logicElement": null
     }
   ],
   "analogOutputs": [
     {
-      "name": "AO0",
-      "minV": 0.8,
+      "name": "Servo Cmd",
+      "minV": 0.0,
       "maxV": 10.0,
       "startupV": 0.0,
-      "include": true
+      "include": true,
+      "enable_gate": true,
+      "enable_kind": "le",
+      "enable_index": 0
     },
     {
       "name": "AO1",
       "minV": 0.0,
       "maxV": 10.0,
       "startupV": 0.0,
-      "include": false
+      "include": true,
+      "enable_gate": false,
+      "enable_kind": "do",
+      "enable_index": 0
     }
   ],
   "thermocouples": [
@@ -187,21 +201,21 @@
       "offset": 0.0
     },
     {
-      "include": false,
+      "include": true,
       "ch": 5,
       "name": "TC5",
       "type": "K",
       "offset": 0.0
     },
     {
-      "include": false,
+      "include": true,
       "ch": 6,
       "name": "TC6",
       "type": "K",
       "offset": 0.0
     },
     {
-      "include": false,
+      "include": true,
       "ch": 7,
       "name": "TC7",
       "type": "K",

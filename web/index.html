@@ -8,6 +8,9 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
+  <!-- Exit fullscreen button - only visible in fullscreen mode -->
+  <button id="exitFullscreenBtn" class="btn">✕ Exit Fullscreen (F11)</button>
+  
   <header class="topbar">
     <div class="left">
       <button id="connectBtn" class="btn">Connect</button>
@@ -17,9 +20,11 @@
       <span id="versions" class="muted"></span>
     </div>
     <div class="right">
+      <button id="fullscreenBtn" class="btn" title="Toggle Fullscreen (F11)">⛶</button>
       <button id="editConfig" class="btn">Config</button>
       <button id="editPID" class="btn">PID</button>
       <button id="editMotor" class="btn">Motors</button>
+      <button id="editLE" class="btn">Logic</button>
       <button id="editScript" class="btn">Script</button>
       <button id="saveLayout" class="btn">Save Layout</button>
       <button id="loadLayout" class="btn">Load Layout</button>
@@ -81,17 +86,18 @@
       <button class="btn" data-add="dobutton">DO Button</button>
       <button class="btn" data-add="pidpanel">PID Panel</button>
       <button class="btn" data-add="motor">Motor Controller</button>
+      <button class="btn" data-add="le">Logic Element</button>
       <h3>Pages</h3>
       <div id="pages"></div>
       <div class="page-controls">
         <button id="addPage" class="btn">+ Add Page</button>
-        <button id="delPage" class="btn danger">− Remove Page</button>
+        <button id="delPage" class="btn danger">∓ Remove Page</button>
       </div>
     </aside>
     <section class="canvas" id="canvas"></section>
   </main>
 
   <div id="modal" class="modal hidden"></div>
-  <script src="/app.js?v=0.9.3" defer></script>
+  <script src="/app.js?v=0.9.4" defer></script>
 </body>
 </html>

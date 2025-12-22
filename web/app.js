@@ -1,5 +1,5 @@
 // app.js – UI v0.9.4 - PART 1 OF 2
-const UI_VERSION = "0.9.4";
+const UI_VERSION = "0.12.1";  // True fullscreen with browser chrome hidden + exit button
 
 /* ----------------------------- helpers ---------------------------------- */
 const $ = sel => document.querySelector(sel);
@@ -666,7 +666,9 @@ const state = {
   ao: Array(2).fill(0),
   do: Array(8).fill(0),
   tc: [],
-  pid: []
+  pid: [],
+  motors: [],
+  le: []  // Logic Elements
 };
 
 function feedTick(msg){
@@ -676,6 +678,7 @@ function feedTick(msg){
   if (msg.tc)  state.tc  = msg.tc;
   if (msg.pid) state.pid = msg.pid;
   if (msg.motors) state.motors = msg.motors;
+  if (msg.le) state.le = msg.le;  // Logic Elements
   onTick();
 }
 
@@ -699,9 +702,12 @@ document.addEventListener('DOMContentLoaded', () => {
 function wireUI(){
   $('#connectBtn')?.addEventListener('click', connect);
   $('#setRate')?.addEventListener('click', setRate);
+  $('#fullscreenBtn')?.addEventListener('click', toggleFullscreen);
+  $('#exitFullscreenBtn')?.addEventListener('click', toggleFullscreen);
   $('#editConfig')?.addEventListener('click', ()=>openConfigForm());
   $('#editPID')?.addEventListener('click', ()=>openPidForm());
   $('#editMotor')?.addEventListener('click', ()=>openMotorEditor());
+  $('#editLE')?.addEventListener('click', ()=>openLEEditor());  // Logic Elements
   $('#editScript')?.addEventListener('click', ()=>openScriptEditor());
   $('#saveLayout')?.addEventListener('click', saveLayoutToFile);
   $('#loadLayout')?.addEventListener('click', loadLayoutFromFile);
@@ -709,6 +715,66 @@ function wireUI(){
   $('#delPage')?.addEventListener('click', removeActivePage);
   applyInitialsFromConfig();
   document.querySelectorAll('[data-add]').forEach(btn => btn.addEventListener('click', ()=>addWidget(btn.dataset.add)));
+  
+  // F11 key for fullscreen toggle
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'F11') {
+      e.preventDefault();
+      toggleFullscreen();
+    }
+  });
+  
+  // ESC key to exit fullscreen
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.body.classList.contains('fullscreen')) {
+      toggleFullscreen();
+    }
+  });
+}
+
+async function toggleFullscreen() {
+  const isFullscreen = document.body.classList.contains('fullscreen');
+  
+  if (!isFullscreen) {
+    // Enter fullscreen
+    document.body.classList.add('fullscreen');
+    
+    // Try to use browser's native fullscreen API (hides browser chrome)
+    try {
+      if (document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      } else if (document.documentElement.webkitRequestFullscreen) {
+        await document.documentElement.webkitRequestFullscreen();
+      } else if (document.documentElement.msRequestFullscreen) {
+        await document.documentElement.msRequestFullscreen();
+      }
+    } catch(e) {
+      console.log('Native fullscreen not available, using CSS fullscreen');
+    }
+  } else {
+    // Exit fullscreen
+    document.body.classList.remove('fullscreen');
+    
+    // Exit browser's native fullscreen
+    try {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) {
+        await document.webkitExitFullscreen();
+      } else if (document.msExitFullscreen) {
+        await document.msExitFullscreen();
+      }
+    } catch(e) {
+      console.log('Native fullscreen exit not available');
+    }
+  }
+  
+  const btn = $('#fullscreenBtn');
+  if (btn) {
+    const nowFullscreen = document.body.classList.contains('fullscreen');
+    btn.textContent = nowFullscreen ? '⛶' : '⛶';
+    btn.title = nowFullscreen ? 'Exit Fullscreen (F11)' : 'Enter Fullscreen (F11)';
+  }
 }
 
 async function showVersions(){
@@ -841,6 +907,12 @@ function addWidget(type){
     return;
   }
   
+  // Special handling for LE - fetch LE config for name
+  if (type === 'le') {
+    addLEWidget();
+    return;
+  }
+  
   // Custom default sizes for different widget types
   let defaultW = 460, defaultH = 280;
   if (type === 'gauge') {
@@ -848,6 +920,9 @@ function addWidget(type){
   } else if (type === 'dobutton') {
     defaultW = 120;
     defaultH = 90;
+  } else if (type === 'le') {
+    defaultW = 280;  // Compact for LE
+    defaultH = 160;
   }
   
   const w={ id:crypto.randomUUID(), type, x:40, y:40, w:defaultW, h:defaultH, opts:defaultsFor(type) };
@@ -866,61 +941,56 @@ async function addPIDPanel() {
       return;
     }
     
-    // Build options list showing loop names
-    const options = loops.map((loop, idx) => {
+    // Create modal with dropdown selector
+    const root = el('div', {});
+    root.append(el('h3', {}, 'Select PID Loop'));
+    
+    const selector = el('select', {style: 'width:100%; font-size:14px; padding:8px'});
+    loops.forEach((loop, idx) => {
       const name = loop.name || `Loop ${idx}`;
       const enabled = loop.enabled ? '✓' : '✗';
-      return `${idx}: ${name} (${enabled})`;
-    }).join('\n');
+      const label = `${name} (${enabled})`;
+      selector.append(el('option', {value: idx}, label));
+    });
     
-    const choice = prompt(
-      `Select PID Loop Index (0-${loops.length - 1}):\n\n${options}\n\nEnter loop index:`,
-      '0'
+    root.append(
+      el('div', {style: 'margin:16px 0'}, [
+        el('label', {}, ['PID Loop: ', selector])
+      ])
     );
     
-    if (choice === null) return; // User cancelled
-    
-    const loopIndex = parseInt(choice);
-    if (isNaN(loopIndex) || loopIndex < 0 || loopIndex >= loops.length) {
-      alert(`Invalid loop index. Must be between 0 and ${loops.length - 1}`);
-      return;
-    }
-    
-    // Create the widget with the selected loop index
-    const loopName = loops[loopIndex].name || `Loop ${loopIndex}`;
-    const w = {
-      id: crypto.randomUUID(),
-      type: 'pidpanel',
-      x: 40,
-      y: 40,
-      w: 320,
-      h: 600,
-      opts: {
-        title: `PID: ${loopName}`,
-        loopIndex: loopIndex,
-        showControls: true
+    const addBtn = el('button', {
+      className: 'btn',
+      onclick: () => {
+        const loopIndex = parseInt(selector.value);
+        const loopName = loops[loopIndex].name || `Loop ${loopIndex}`;
+        
+        const w = {
+          id: crypto.randomUUID(),
+          type: 'pidpanel',
+          x: 40,
+          y: 40,
+          w: 320,
+          h: 600,
+          opts: {
+            title: `PID: ${loopName}`,
+            loopIndex: loopIndex,
+            showControls: true
+          }
+        };
+        
+        state.pages[activePageIndex].widgets.push(w);
+        renderPage();
+        closeModal();
       }
-    };
+    }, 'Add Widget');
     
-    state.pages[activePageIndex].widgets.push(w);
-    renderPage();
+    root.append(addBtn);
+    showModal(root);
     
   } catch(e) {
     console.error('Failed to fetch PID config:', e);
-    alert('Failed to load PID configuration. Using default Loop 0.');
-    
-    // Fall back to default
-    const w = {
-      id: crypto.randomUUID(),
-      type: 'pidpanel',
-      x: 40,
-      y: 40,
-      w: 320,
-      h: 600,
-      opts: defaultsFor('pidpanel')
-    };
-    state.pages[activePageIndex].widgets.push(w);
-    renderPage();
+    alert('Failed to load PID configuration.');
   }
 }
 
@@ -935,52 +1005,119 @@ async function addMotorWidget() {
       return;
     }
     
-    // Ask which motor to display
-    const motorOptions = motors.map((m, i) => {
+    // Create modal with dropdown selector
+    const root = el('div', {});
+    root.append(el('h3', {}, 'Select Motor'));
+    
+    const selector = el('select', {style: 'width:100%; font-size:14px; padding:8px'});
+    motors.forEach((m, i) => {
       const included = m.include ? '✓' : '✗';
-      return `${i}: ${m.name} (${included})`;
-    }).join('\n');
+      const label = `${m.name || `Motor ${i}`} (${included})`;
+      selector.append(el('option', {value: i}, label));
+    });
     
-    const selection = prompt(`Select motor index:\n\n${motorOptions}\n\nEnter index (0-${motors.length-1}):`);
-    if (selection === null) return;
+    root.append(
+      el('div', {style: 'margin:16px 0'}, [
+        el('label', {}, ['Motor: ', selector])
+      ])
+    );
     
-    const motorIndex = parseInt(selection);
-    if (isNaN(motorIndex) || motorIndex < 0 || motorIndex >= motors.length) {
-      alert('Invalid motor index');
+    const addBtn = el('button', {
+      className: 'btn',
+      onclick: () => {
+        const motorIndex = parseInt(selector.value);
+        const motorName = motors[motorIndex].name || `Motor ${motorIndex}`;
+        
+        const w = {
+          id: crypto.randomUUID(),
+          type: 'motor',
+          x: 40,
+          y: 40,
+          w: 320,
+          h: 380,
+          opts: {
+            title: motorName,
+            motorIndex: motorIndex,
+            showControls: true
+          }
+        };
+        
+        state.pages[activePageIndex].widgets.push(w);
+        renderPage();
+        closeModal();
+      }
+    }, 'Add Widget');
+    
+    root.append(addBtn);
+    showModal(root);
+    
+  } catch(e) {
+    console.error('Failed to add motor widget:', e);
+    alert('Failed to load motor configuration.');
+  }
+}
+
+async function addLEWidget() {
+  try {
+    // Fetch LE configuration
+    const leData = await (await fetch('/api/logic_elements')).json();
+    const elements = leData.elements || [];
+    
+    if (elements.length === 0) {
+      alert('No Logic Elements configured. Please configure LEs first.');
       return;
     }
     
-    // Create widget with motor name as title
-    const motorName = motors[motorIndex].name || `Motor ${motorIndex}`;
-    const w = {
-      id: crypto.randomUUID(),
-      type: 'motor',
-      x: 40,
-      y: 40,
-      w: 320,
-      h: 380,
-      opts: {
-        title: motorName,
-        motorIndex: motorIndex,
-        showControls: true
+    // Create modal with dropdown selector
+    const root = el('div', {});
+    root.append(el('h3', {}, 'Select Logic Element'));
+    
+    const selector = el('select', {style: 'width:100%; font-size:14px; padding:8px'});
+    elements.forEach((le, i) => {
+      const name = le.name || `LE${i}`;
+      const op = (le.operation || 'and').toUpperCase();
+      const label = `${name} (${op})`;
+      selector.append(el('option', {value: i}, label));
+    });
+    
+    root.append(
+      el('div', {style: 'margin:16px 0'}, [
+        el('label', {}, ['Logic Element: ', selector])
+      ])
+    );
+    
+    const addBtn = el('button', {
+      className: 'btn',
+      onclick: () => {
+        const leIndex = parseInt(selector.value);
+        const leName = elements[leIndex].name || `LE${leIndex}`;
+        
+        const w = {
+          id: crypto.randomUUID(),
+          type: 'le',
+          x: 40,
+          y: 40,
+          w: 280,
+          h: 160,
+          opts: {
+            title: leName,
+            leIndex: leIndex,
+            showInputs: true
+          }
+        };
+        
+        state.pages[activePageIndex].widgets.push(w);
+        renderPage();
+        closeModal();
       }
-    };
-    state.pages[activePageIndex].widgets.push(w);
-    renderPage();
+    }, 'Add Widget');
+    
+    root.append(addBtn);
+    showModal(root);
+    
   } catch(e) {
-    console.error('Failed to add motor widget:', e);
-    // Fall back to default
-    const w = {
-      id: crypto.randomUUID(),
-      type: 'motor',
-      x: 40,
-      y: 40,
-      w: 320,
-      h: 380,
-      opts: defaultsFor('motor')
-    };
-    state.pages[activePageIndex].widgets.push(w);
-    renderPage();
+    console.error('Failed to add LE widget:', e);
+    alert('Failed to load Logic Element configuration.');
   }
 }
 
@@ -1016,10 +1153,16 @@ function renderPage(){
 function renderWidget(w){
   const classList = w.type === 'dobutton' ? 'widget dobutton-widget' : 'widget';
   const box=el('div',{className:classList, id:'w_'+w.id});
-  const tools=el('div',{className:'tools'},[
-    el('span',{className:'icon', title:'Settings', onclick:()=>openWidgetSettings(w)}, '⚙'),
-    el('span',{className:'icon', title:'Close',    onclick:()=>removeWidget(w.id)}, '×')
-  ]);
+  
+  // LE widgets don't need settings - only close button
+  const toolButtons = w.type === 'le' 
+    ? [el('span',{className:'icon', title:'Close', onclick:()=>removeWidget(w.id)}, '×')]
+    : [
+        el('span',{className:'icon', title:'Settings', onclick:()=>openWidgetSettings(w)}, '⚙'),
+        el('span',{className:'icon', title:'Close',    onclick:()=>removeWidget(w.id)}, '×')
+      ];
+  
+  const tools=el('div',{className:'tools'}, toolButtons);
   const header=el('header',{},[
     el('span',{className:'title'}, w.opts.title||w.type),
     el('div',{className:'spacer'}),
@@ -1037,6 +1180,7 @@ function renderWidget(w){
     case 'pidpanel': mountPIDPanel(w,body); break;
     case 'aoslider': mountAOSlider(w,body); break;
     case 'motor':    mountMotorController(w,body); break;
+    case 'le':       mountLEWidget(w,body); break;
   }
   return box;
 }
@@ -1865,14 +2009,30 @@ function updateDOButtons(){
 
 /* -------------------------------- PID ----------------------------------- */
 function mountPIDPanel(w, body){
-  const line=el('div',{className:'small', id:'pid_'+w.id}, 'pv=—, err=—, out=—');
-  body.append(line);
+  const line=el('div',{className:'small', id:'pid_'+w.id, style:'display:inline-block'}, 'pv=—, err=—, out=—');
+  
+  // Enable indicator container (will be populated if gating is configured)
+  const enableContainer = el('div', {style:'display:inline-block;margin-left:8px;vertical-align:middle'});
+  
+  body.append(el('div', {style:'display:flex;align-items:center'}, [line, enableContainer]));
+
+  // Fetch PID config to check if enable gate is configured
+  let pidConfig = null;
+  (async () => {
+    try {
+      const resp = await fetch('/api/pid');
+      const data = await resp.json();
+      pidConfig = data.loops?.[w.opts.loopIndex ?? 0];
+    } catch(e) {
+      console.warn('Failed to load PID config:', e);
+    }
+  })();
 
   if (w.opts.showControls){
     const ctr=el('div',{className:'compact'});
     const tbl=el('table',{className:'form'}); const tb=el('tbody');
     const row=(label,input)=>{ const tr=el('tr'); tr.append(el('th',{},label), el('td',{},input)); tb.append(tr); };
-    const L={enabled:false,name:'',kind:'analog',src:'ai',ai_ch:0,out_ch:0,target:0,kp:0,ki:0,kd:0,out_min:0,out_max:1,err_min:-1,err_max:1,i_min:-1,i_max:1};
+    const L={enabled:false,name:'',kind:'analog',src:'ai',ai_ch:0,out_ch:0,target:0,kp:0,ki:0,kd:0,out_min:0,out_max:1,err_min:-1,err_max:1,i_min:-1,i_max:1,enable_gate:false,enable_kind:'do',enable_index:0};
 
     fetch('/api/pid').then(r=>r.json()).then(pid=>{
       const idx=w.opts.loopIndex|0; Object.assign(L, pid.loops?.[idx]||{});
@@ -1894,6 +2054,7 @@ function mountPIDPanel(w, body){
       row('err_max',num(L,'err_max',0.0001));
       row('i_min',  num(L,'i_min',0.0001));
       row('i_max',  num(L,'i_max',0.0001));
+      // Enable gate fields removed - edit in main PID editor only
       tbl.append(tb);
 
       const save=el('button',{className:'btn',onclick:async()=>{
@@ -1912,7 +2073,34 @@ function mountPIDPanel(w, body){
   (function update(){
     const loop=state.pid[w.opts.loopIndex]||null;
     const p=$('#pid_'+w.id);
-    if(loop&&p){ p.textContent=`pv=${(loop.pv??0).toFixed(3)}, err=${(loop.err??0).toFixed(3)}, out=${(loop.out??0).toFixed(3)}`; }
+    if(loop&&p){ 
+      p.textContent=`pv=${(loop.pv??0).toFixed(3)}, err=${(loop.err??0).toFixed(3)}, out=${(loop.out??0).toFixed(3)}`;
+      
+      // Update enable indicator if gating is configured
+      if (pidConfig && pidConfig.enable_gate) {
+        let enabled = false;
+        
+        if (pidConfig.enable_kind === 'do') {
+          enabled = state.do?.[pidConfig.enable_index] ? true : false;
+        } else if (pidConfig.enable_kind === 'le') {
+          enabled = state.le?.[pidConfig.enable_index]?.output ? true : false;
+        }
+        
+        const statusText = enabled ? '1' : '0';
+        const color = enabled ? '#2faa60' : '#d84a4a';
+        const gated = loop.gated ? ' (GATED)' : '';
+        
+        enableContainer.innerHTML = `
+          <div style="display:inline-block;text-align:center;padding:2px 4px;border:1px solid ${color};border-radius:3px;background:#1a1d2e;min-width:35px;vertical-align:middle">
+            <div style="font-size:7px;color:#9aa1b9;line-height:1.1">EN</div>
+            <div style="font-size:14px;font-weight:bold;line-height:1.1;color:${color}">${statusText}</div>
+            <div style="font-size:6px;color:#7a7f8f;line-height:1.1">${pidConfig.enable_kind.toUpperCase()}${pidConfig.enable_index}</div>
+          </div>
+        `;
+      } else {
+        enableContainer.innerHTML = '';
+      }
+    }
     requestAnimationFrame(update);
   })();
 }
@@ -1930,6 +2118,31 @@ function mountAOSlider(w, body){
   const step=w.opts.step ?? 0.0025;
   const cur=el('input',{type:'number', min:w.opts.min, max:w.opts.max, step:step, value:state.ao[w.opts.aoIndex]||0, style:'width:90px'});
   const rng=el('input',{type:'range',  min:w.opts.min, max:w.opts.max, step:step, value:state.ao[w.opts.aoIndex]||0, style:'width:100%'});
+  
+  // Enable indicator (if gating is enabled in config)
+  let enableBox = null;
+  let aoConfig = null;
+  
+  // Fetch AO config to check if enable gate is active
+  (async () => {
+    try {
+      const resp = await fetch('/api/config');
+      const cfg = await resp.json();
+      aoConfig = cfg.analogOutputs?.[w.opts.aoIndex];
+      
+      // If enable gate is configured, show enable indicator
+      if (aoConfig && aoConfig.enable_gate) {
+        enableBox = el('div', {
+          style: 'display:inline-block;text-align:center;padding:3px;border:2px solid #2a3046;border-radius:3px;background:#1a1d2e;min-width:50px;vertical-align:middle;margin-left:8px'
+        });
+        const row = body.querySelector('.row');
+        if (row) row.appendChild(enableBox);
+      }
+    } catch(e) {
+      console.warn('Failed to load AO config:', e);
+    }
+  })();
+  
   const send=async(v)=>{
     try{
       await fetch('/api/ao/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:w.opts.aoIndex, volts:parseFloat(v)})});
@@ -1937,7 +2150,34 @@ function mountAOSlider(w, body){
   };
   rng.oninput=()=>{ cur.value=rng.value; if (w.opts.live) send(rng.value); };
   cur.onchange=()=>{ rng.value=cur.value; send(cur.value); };
-  body.append(el('div',{className:'row'},[rng,cur]));
+  
+  const row = el('div',{className:'row'},[rng,cur]);
+  body.append(row);
+  
+  // Update enable indicator
+  (function updateEnable() {
+    if (enableBox && aoConfig) {
+      let enabled = false;
+      
+      if (aoConfig.enable_kind === 'do') {
+        enabled = state.do?.[aoConfig.enable_index] ? true : false;
+      } else if (aoConfig.enable_kind === 'le') {
+        enabled = state.le?.[aoConfig.enable_index]?.output ? true : false;
+      }
+      
+      const statusText = enabled ? '1' : '0';
+      const color = enabled ? '#2faa60' : '#d84a4a';
+      
+      enableBox.innerHTML = `
+        <div style="font-size:8px;color:#9aa1b9;line-height:1.2">ENABLE</div>
+        <div style="font-size:18px;font-weight:bold;line-height:1.2;color:${color}">${statusText}</div>
+        <div style="font-size:7px;color:#7a7f8f;line-height:1.2">${aoConfig.enable_kind.toUpperCase()}${aoConfig.enable_index}</div>
+      `;
+      enableBox.style.borderColor = color;
+    }
+    
+    requestAnimationFrame(updateEnable);
+  })();
 }
 
 /* -------------------------------- Motor Controller ------------------------------------ */
@@ -2087,6 +2327,211 @@ function mountMotorController(w, body){
   })();
 }
 
+/* ------------------------ LE Widget ---------------------------- */
+function mountLEWidget(w, body){
+  body.style.padding = '4px';
+  body.style.fontSize = '10px';
+  body.style.fontFamily = 'monospace';
+  
+  let leConfig = null;
+  
+  // Fetch LE configuration
+  (async () => {
+    try {
+      const resp = await fetch('/api/logic_elements');
+      const data = await resp.json();
+      leConfig = data.elements?.[w.opts.leIndex ?? 0];
+      
+      // Update widget title with LE name
+      if (leConfig && leConfig.name) {
+        const titleEl = document.querySelector(`#w_${w.id} .title`);
+        if (titleEl) {
+          titleEl.textContent = leConfig.name;
+        }
+      }
+    } catch(e) {
+      console.error('Failed to load LE config:', e);
+    }
+  })();
+  
+  (function update(){
+    const idx = w.opts.leIndex ?? 0;
+    const le = state.le?.[idx];
+    
+    if (!leConfig) {
+      body.innerHTML = `<div style="text-align:center;color:var(--muted);padding:20px;font-size:11px">LE${idx}<br>Loading...</div>`;
+      setTimeout(update, 100);
+      return;
+    }
+    
+    if (!le) {
+      body.innerHTML = `<div style="text-align:center;color:var(--muted);padding:20px;font-size:11px">LE${idx}<br>Waiting for data...<br><small style="font-size:9px">Check server logs</small></div>`;
+      setTimeout(update, 500);
+      return;
+    }
+
+    // Process Input A
+    const getInputInfo = (inputCfg) => {
+      if (!inputCfg) return {label: '?', val: '?', detail: ''};
+      
+      const kind = inputCfg.kind || 'do';
+      const ch = inputCfg.index || 0;
+      let val = '?';
+      let detail = '';
+      
+      if (kind === 'do') {
+        const raw = state.do?.[ch] ?? 0;
+        val = raw ? '1' : '0';
+        return {label: `DO${ch}`, val, detail};
+      }
+      else if (kind === 'le') {
+        const raw = state.le?.[ch]?.output ?? false;
+        val = raw ? '1' : '0';
+        return {label: `LE${ch}`, val, detail};
+      }
+      else if (kind === 'ai') {
+        const rawVal = state.ai?.[ch] ?? 0;
+        const comp = inputCfg.comparison || 'gt';
+        let compVal = 0;
+        
+        if (inputCfg.compare_to_type === 'signal') {
+          const cKind = inputCfg.compare_to_kind || 'ai';
+          const cCh = inputCfg.compare_to_index || 0;
+          if (cKind === 'ai') compVal = state.ai?.[cCh] ?? 0;
+          else if (cKind === 'ao') compVal = state.ao?.[cCh] ?? 0;
+          else if (cKind === 'tc') compVal = state.tc?.[cCh] ?? 0;
+          else if (cKind === 'pid_u') compVal = state.pid?.[cCh]?.u ?? 0;
+        } else {
+          compVal = inputCfg.compare_value ?? 0;
+        }
+        
+        let result = false;
+        if (comp === 'lt') result = rawVal < compVal;
+        else if (comp === 'eq') result = Math.abs(rawVal - compVal) < 0.001;
+        else result = rawVal > compVal;
+        
+        val = result ? '1' : '0';
+        const compSym = comp === 'lt' ? '<' : (comp === 'eq' ? '=' : '>');
+        detail = `${rawVal.toFixed(1)}${compSym}${compVal.toFixed(1)}`;
+        return {label: `AI${ch}`, val, detail};
+      }
+      else if (kind === 'ao') {
+        const rawVal = state.ao?.[ch] ?? 0;
+        const comp = inputCfg.comparison || 'gt';
+        let compVal = 0;
+        
+        if (inputCfg.compare_to_type === 'signal') {
+          const cKind = inputCfg.compare_to_kind || 'ai';
+          const cCh = inputCfg.compare_to_index || 0;
+          if (cKind === 'ai') compVal = state.ai?.[cCh] ?? 0;
+          else if (cKind === 'ao') compVal = state.ao?.[cCh] ?? 0;
+          else if (cKind === 'tc') compVal = state.tc?.[cCh] ?? 0;
+          else if (cKind === 'pid_u') compVal = state.pid?.[cCh]?.u ?? 0;
+        } else {
+          compVal = inputCfg.compare_value ?? 0;
+        }
+        
+        let result = false;
+        if (comp === 'lt') result = rawVal < compVal;
+        else if (comp === 'eq') result = Math.abs(rawVal - compVal) < 0.001;
+        else result = rawVal > compVal;
+        
+        val = result ? '1' : '0';
+        const compSym = comp === 'lt' ? '<' : (comp === 'eq' ? '=' : '>');
+        detail = `${rawVal.toFixed(1)}${compSym}${compVal.toFixed(1)}`;
+        return {label: `AO${ch}`, val, detail};
+      }
+      else if (kind === 'tc') {
+        const rawVal = state.tc?.[ch] ?? 0;
+        const comp = inputCfg.comparison || 'gt';
+        let compVal = 0;
+        
+        if (inputCfg.compare_to_type === 'signal') {
+          const cKind = inputCfg.compare_to_kind || 'ai';
+          const cCh = inputCfg.compare_to_index || 0;
+          if (cKind === 'ai') compVal = state.ai?.[cCh] ?? 0;
+          else if (cKind === 'ao') compVal = state.ao?.[cCh] ?? 0;
+          else if (cKind === 'tc') compVal = state.tc?.[cCh] ?? 0;
+          else if (cKind === 'pid_u') compVal = state.pid?.[cCh]?.u ?? 0;
+        } else {
+          compVal = inputCfg.compare_value ?? 0;
+        }
+        
+        let result = false;
+        if (comp === 'lt') result = rawVal < compVal;
+        else if (comp === 'eq') result = Math.abs(rawVal - compVal) < 0.001;
+        else result = rawVal > compVal;
+        
+        val = result ? '1' : '0';
+        const compSym = comp === 'lt' ? '<' : (comp === 'eq' ? '=' : '>');
+        detail = `${rawVal.toFixed(1)}${compSym}${compVal.toFixed(1)}`;
+        return {label: `TC${ch}`, val, detail};
+      }
+      else if (kind === 'pid_u') {
+        const rawVal = state.pid?.[ch]?.u ?? 0;
+        const comp = inputCfg.comparison || 'gt';
+        let compVal = 0;
+        
+        if (inputCfg.compare_to_type === 'signal') {
+          const cKind = inputCfg.compare_to_kind || 'ai';
+          const cCh = inputCfg.compare_to_index || 0;
+          if (cKind === 'ai') compVal = state.ai?.[cCh] ?? 0;
+          else if (cKind === 'ao') compVal = state.ao?.[cCh] ?? 0;
+          else if (cKind === 'tc') compVal = state.tc?.[cCh] ?? 0;
+          else if (cKind === 'pid_u') compVal = state.pid?.[cCh]?.u ?? 0;
+        } else {
+          compVal = inputCfg.compare_value ?? 0;
+        }
+        
+        let result = false;
+        if (comp === 'lt') result = rawVal < compVal;
+        else if (comp === 'eq') result = Math.abs(rawVal - compVal) < 0.001;
+        else result = rawVal > compVal;
+        
+        val = result ? '1' : '0';
+        const compSym = comp === 'lt' ? '<' : (comp === 'eq' ? '=' : '>');
+        detail = `${rawVal.toFixed(1)}${compSym}${compVal.toFixed(1)}`;
+        return {label: `PID${ch}`, val, detail};
+      }
+      
+      return {label: '?', val: '?', detail: ''};
+    };
+    
+    const inA = getInputInfo(leConfig.input_a);
+    const inB = getInputInfo(leConfig.input_b);
+    const output = le.output ? '1' : '0';
+    const op = (leConfig.operation || 'and').toUpperCase();
+    
+    // Compact 5-box layout: [A][OP][B][=][OUT]
+    body.innerHTML = `
+      <div style="display:flex;gap:2px;justify-content:center;align-items:center;height:100%">
+        <div style="text-align:center;padding:3px;border:1px solid #2a3046;border-radius:3px;background:#1a1d2e;min-width:45px">
+          <div style="font-size:8px;color:#79c0ff;line-height:1.2">${inA.label}</div>
+          <div style="font-size:20px;font-weight:bold;line-height:1.2;color:${inA.val==='1'?'#2faa60':'#d84a4a'}">${inA.val}</div>
+          ${inA.detail ? `<div style="font-size:7px;color:#7a7f8f;line-height:1.2;margin-top:1px">${inA.detail}</div>` : ''}
+        </div>
+        <div style="text-align:center;padding:3px;border:1px solid #2a3046;border-radius:3px;background:#1a1d2e;min-width:35px">
+          <div style="font-size:11px;font-weight:bold;color:#e0af68;line-height:1.4">${op}</div>
+        </div>
+        <div style="text-align:center;padding:3px;border:1px solid #2a3046;border-radius:3px;background:#1a1d2e;min-width:45px">
+          <div style="font-size:8px;color:#79c0ff;line-height:1.2">${inB.label}</div>
+          <div style="font-size:20px;font-weight:bold;line-height:1.2;color:${inB.val==='1'?'#2faa60':'#d84a4a'}">${inB.val}</div>
+          ${inB.detail ? `<div style="font-size:7px;color:#7a7f8f;line-height:1.2;margin-top:1px">${inB.detail}</div>` : ''}
+        </div>
+        <div style="text-align:center;padding:3px;min-width:10px">
+          <div style="font-size:14px;color:#9aa1b9;line-height:1.4">=</div>
+        </div>
+        <div style="text-align:center;padding:3px;border:2px solid ${output==='1'?'#2faa60':'#d84a4a'};border-radius:3px;background:#1a1d2e;min-width:40px">
+          <div style="font-size:8px;color:#9aa1b9;line-height:1.2">OUT</div>
+          <div style="font-size:22px;font-weight:bold;line-height:1.2;color:${output==='1'?'#2faa60':'#d84a4a'}">${output}</div>
+        </div>
+      </div>
+    `;
+    
+    requestAnimationFrame(update);
+  })();
+}
+
 /* ------------------------ tick / read / drag ---------------------------- */
 function onTick(){
   if (replayMode !== null) {
@@ -2182,6 +2627,11 @@ function normalizeLayoutPages(pages){
         w.opts.title = w.opts.title ?? 'Motor';
         w.opts.motorIndex = Number.isInteger(w.opts.motorIndex) ? w.opts.motorIndex : 0;
         w.opts.showControls = (w.opts.showControls !== false);
+        break;
+      case 'le':
+        w.opts.title = w.opts.title ?? 'Logic Element';
+        w.opts.leIndex = Number.isInteger(w.opts.leIndex) ? w.opts.leIndex : 0;
+        w.opts.showInputs = (w.opts.showInputs !== false);
         break;
     }
     // ensure position/size exist so renderPage doesn’t choke
@@ -2288,6 +2738,9 @@ async function openConfigForm(){
     `minV`,        inputNum(a,'minV',0.001),
     `maxV`,        inputNum(a,'maxV',0.001),
     `startupV`,    inputNum(a,'startupV',0.001),
+    `enable gate`, inputChk(a,'enable_gate'),
+    `gate type`,   selectEnum(['do','le'], a.enable_kind||'do', v=>a.enable_kind=v),
+    `gate index`,  inputNum(a,'enable_index',1),
     `include`,     inputChk(a,'include')
   ]);
   const aos=fieldset('Analog Outputs (0–10 V)', tableFormRows(aoRows));
@@ -2317,6 +2770,13 @@ async function openConfigForm(){
 async function openPidForm(){
   const pid=await (await fetch('/api/pid')).json();
   const loops = pid.loops || [];
+  
+  // Ensure all loops have enable_gate defaults
+  loops.forEach(L => {
+    if (L.enable_gate === undefined) L.enable_gate = false;
+    if (L.enable_kind === undefined) L.enable_kind = 'do';
+    if (L.enable_index === undefined) L.enable_index = 0;
+  });
 
   const root = el('div', {});
   const title = el('h2', {}, 'PID Loops');
@@ -2362,7 +2822,10 @@ async function openPidForm(){
         err_max: null,
         i_min: null,
         i_max: null,
-        name: `Loop${loops.length}`
+        name: `Loop${loops.length}`,
+        enable_gate: false,
+        enable_kind: 'do',
+        enable_index: 0
       });
       // Rebuild the form
       buildForm();
@@ -2374,7 +2837,7 @@ async function openPidForm(){
   const buildForm = () => {
     formContainer.innerHTML = '';
     
-    const table = el('table', {className:'form'});
+    const table = el('table', {className:'form', style:'table-layout:auto'});
     const thead = el('thead');
     thead.append(el('tr', {}, [
       el('th', {}, '#'),
@@ -2394,6 +2857,9 @@ async function openPidForm(){
       el('th', {}, 'Err Max'),
       el('th', {}, 'I Min'),
       el('th', {}, 'I Max'),
+      el('th', {}, 'En Gate'),
+      el('th', {}, 'Gate Type'),
+      el('th', {}, 'Gate #'),
       el('th', {}, 'Actions')
     ]));
     
@@ -2428,6 +2894,9 @@ async function openPidForm(){
         el('td', {}, num(L, 'err_max', 0.0001)),
         el('td', {}, num(L, 'i_min', 0.0001)),
         el('td', {}, num(L, 'i_max', 0.0001)),
+        el('td', {}, chk(L, 'enable_gate')),
+        el('td', {}, selectEnum(['do','le'], L.enable_kind||'do', v=>L.enable_kind=v)),
+        el('td', {}, num(L, 'enable_index', 1)),
         el('td', {}, removeBtn)
       ]);
       tbody.append(tr);
@@ -2440,7 +2909,8 @@ async function openPidForm(){
   buildForm();
 
   const save=el('button',{className:'btn',onclick:async()=>{
-    try{ 
+    try{
+      console.log('[PID Save] Saving loops:', JSON.stringify(loops, null, 2));
       await fetch('/api/pid',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({loops: loops})}); 
       alert('Saved'); 
     }
@@ -2631,6 +3101,269 @@ async function openMotorEditor(){
     el('div', {style: 'overflow:auto;max-height:60vh'}, formContainer),
     el('div', {style:'margin-top:8px'}, save)
   );
+  showModal(root, ()=>{ renderPage(); });
+}
+
+// ==================== LOGIC ELEMENTS EDITOR ====================
+async function openLEEditor(){
+  const le_data = await (await fetch('/api/logic_elements')).json();
+  const elements = le_data.elements || [];
+  
+  const root = el('div', {});
+  const title = el('h2', {}, 'Logic Elements Editor');
+  
+  const loadBtn = el('button', {
+    className: 'btn',
+    onclick: () => {
+      const inp = el('input', {type: 'file', accept: '.json'});
+      inp.onchange = async () => {
+        const f = inp.files?.[0];
+        if (!f) return;
+        try {
+          const text = await f.text();
+          const loaded = JSON.parse(text);
+          Object.assign(le_data, loaded);
+          alert('LE config loaded! Close and reopen to see changes, or click Save to apply.');
+        } catch(e) {
+          alert('Failed to load LE config: ' + e.message);
+        }
+      };
+      inp.click();
+    }
+  }, '📁 Load from File');
+
+  const addBtn = el('button', {
+    className: 'btn',
+    onclick: () => {
+      elements.push({
+        enabled: true,
+        name: `LE${elements.length}`,
+        input_a: {kind: 'do', index: 0},
+        input_b: {kind: 'do', index: 1},
+        operation: 'and'
+      });
+      renderLEEditor();
+    }
+  }, '+ Add Logic Element');
+
+  const container = el('div', {style: 'overflow:auto;max-height:60vh'});
+
+  function renderLEEditor() {
+    container.innerHTML = '';
+    
+    elements.forEach((elem, idx) => {
+      const card = el('fieldset', {style: 'margin-bottom:20px; padding:12px;'});
+      const legend = el('legend', {}, `LE${idx}: ${elem.name}`);
+      card.append(legend);
+
+      const topRow = el('div', {className: 'row', style: 'margin-bottom:12px'});
+      topRow.append(
+        el('label', {}, [
+          el('input', {type: 'checkbox', checked: elem.enabled, onchange: e => elem.enabled = e.target.checked}),
+          ' Enabled'
+        ]),
+        el('label', {style: 'flex:2'}, [
+          'Name: ',
+          el('input', {type: 'text', value: elem.name, oninput: e => elem.name = e.target.value, style: 'width:100%'})
+        ]),
+        el('button', {
+          className: 'btn danger',
+          onclick: () => {
+            if (confirm(`Delete LE${idx}?`)) {
+              elements.splice(idx, 1);
+              renderLEEditor();
+            }
+          }
+        }, '🗑 Delete')
+      );
+      card.append(topRow);
+
+      const inputASection = el('div', {style: 'border:1px solid #2a3046; padding:8px; margin-bottom:8px; border-radius:6px'});
+      inputASection.append(el('h4', {style: 'margin:0 0 8px 0; color:#a8b3cf'}, 'Input A'));
+      inputASection.append(createInputEditor(elem.input_a, 'a'));
+      card.append(inputASection);
+
+      const opRow = el('div', {style: 'margin:12px 0; text-align:center'});
+      const opSelect = el('select', {
+        onchange: e => elem.operation = e.target.value,
+        style: 'font-size:16px; font-weight:bold; padding:6px 12px'
+      });
+      ['and', 'or', 'xor', 'nand', 'nor', 'nxor'].forEach(op => {
+        opSelect.append(el('option', {value: op}, op.toUpperCase()));
+      });
+      opSelect.value = elem.operation || 'and';  // Set value AFTER options
+      opRow.append(opSelect);
+      card.append(opRow);
+
+      const inputBSection = el('div', {style: 'border:1px solid #2a3046; padding:8px; border-radius:6px'});
+      inputBSection.append(el('h4', {style: 'margin:0 0 8px 0; color:#a8b3cf'}, 'Input B'));
+      inputBSection.append(createInputEditor(elem.input_b, 'b'));
+      card.append(inputBSection);
+
+      container.append(card);
+    });
+  }
+
+  function createInputEditor(input, label) {
+    const div = el('div', {});
+    
+    // Type and Index row - compact layout
+    const kindRow = el('div', {className: 'row', style: 'margin-bottom:8px'});
+    const kindSelect = el('select', {
+      onchange: e => {
+        input.kind = e.target.value;
+        // Clear comparison fields when switching to non-analog types
+        if (!['ai', 'ao', 'tc', 'pid_u'].includes(e.target.value)) {
+          delete input.comparison;
+          delete input.compare_to_type;
+          delete input.compare_value;
+          delete input.compare_to_kind;
+          delete input.compare_to_index;
+        } else {
+          // Set defaults for analog types
+          if (!input.comparison) input.comparison = 'gt';
+          if (!input.compare_to_type) input.compare_to_type = 'value';
+          if (input.compare_value === undefined) input.compare_value = 0;
+        }
+        renderLEEditor();
+      }
+    });
+    
+    // Add options - compact version
+    ['do', 'ai', 'ao', 'tc', 'pid_u', 'le'].forEach(k => {
+      const opt = el('option', {value: k}, k.toUpperCase());
+      kindSelect.append(opt);
+    });
+    
+    // Set the value AFTER adding options
+    kindSelect.value = input.kind || 'do';
+    
+    const indexInput = el('input', {
+      type: 'number',
+      value: input.index,
+      min: 0,
+      step: 1,
+      oninput: e => input.index = parseInt(e.target.value) || 0,
+      style: 'width:80px'
+    });
+    
+    kindRow.append(
+      el('label', {}, ['Type: ', kindSelect]),
+      el('label', {}, ['Index: ', indexInput])
+    );
+    div.append(kindRow);
+
+    // For analog types, show comparison options - compact layout
+    if (['ai', 'ao', 'tc', 'pid_u'].includes(input.kind)) {
+      const compRow = el('div', {className: 'row', style: 'margin-bottom:8px'});
+      
+      const compSelect = el('select', {
+        onchange: e => input.comparison = e.target.value
+      });
+      [{v:'lt', t:'<'}, {v:'eq', t:'='}, {v:'gt', t:'>'}].forEach(({v, t}) => {
+        compSelect.append(el('option', {value: v}, t));
+      });
+      compSelect.value = input.comparison || 'gt';
+      
+      compRow.append(el('label', {}, ['Compare: ', compSelect]));
+      div.append(compRow);
+
+      const compareToRow = el('div', {className: 'row', style: 'margin-bottom:8px'});
+      
+      const typeSelect = el('select', {
+        onchange: e => {
+          input.compare_to_type = e.target.value;
+          // Initialize defaults
+          if (e.target.value === 'value') {
+            if (input.compare_value === undefined) input.compare_value = 0;
+          } else {
+            if (!input.compare_to_kind) input.compare_to_kind = 'ai';
+            if (input.compare_to_index === undefined) input.compare_to_index = 0;
+          }
+          renderLEEditor();
+        }
+      });
+      typeSelect.append(el('option', {value: 'value'}, 'Fixed Value'));
+      typeSelect.append(el('option', {value: 'signal'}, 'Another Signal'));
+      // Set value AFTER adding options
+      typeSelect.value = input.compare_to_type || 'value';
+      
+      compareToRow.append(el('label', {}, ['To: ', typeSelect]));
+      div.append(compareToRow);
+
+      // Show ONLY the relevant input based on compare_to_type
+      if (!input.compare_to_type || input.compare_to_type === 'value') {
+        const valueInput = el('input', {
+          type: 'number',
+          value: input.compare_value ?? 0,
+          step: 0.1,
+          oninput: e => input.compare_value = parseFloat(e.target.value) || 0,
+          style: 'width:100%'
+        });
+        div.append(el('div', {style: 'margin-bottom:8px'}, [
+          el('label', {}, ['Value: ', valueInput])
+        ]));
+      } else if (input.compare_to_type === 'signal') {
+        const signalRow = el('div', {className: 'row', style: 'margin-bottom:8px'});
+        
+        const signalKindSelect = el('select', {
+          onchange: e => input.compare_to_kind = e.target.value
+        });
+        ['ai', 'ao', 'tc', 'pid_u'].forEach(k => {
+          signalKindSelect.append(el('option', {value: k}, k.toUpperCase()));
+        });
+        signalKindSelect.value = input.compare_to_kind || 'ai';
+        
+        const signalIndexInput = el('input', {
+          type: 'number',
+          value: input.compare_to_index ?? 0,
+          min: 0,
+          step: 1,
+          oninput: e => input.compare_to_index = parseInt(e.target.value) || 0,
+          style: 'width:80px'
+        });
+        
+        signalRow.append(
+          el('label', {}, ['Signal: ', signalKindSelect]),
+          el('label', {}, ['Index: ', signalIndexInput])
+        );
+        div.append(signalRow);
+      }
+    }
+    // Removed info text for DO/LE - you know what they are!
+
+    return div;
+  }
+
+  const save = el('button', {
+    className: 'btn',
+    onclick: async() => {
+      try {
+        await fetch('/api/logic_elements', {
+          method:'PUT',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({elements: elements})
+        });
+        alert('Logic Elements Saved');
+      } catch(e) {
+        alert('Save failed: ' + e.message);
+      }
+    }
+  }, 'Save');
+
+  root.append(
+    title,
+    el('div', {style: 'display:flex;gap:8px;margin-bottom:12px'}, [loadBtn, addBtn]),
+    el('div', {style: 'margin:12px 0'}, [
+      el('p', {}, 'Logic Elements combine two inputs with boolean logic operations.'),
+      el('p', {style: 'font-size:12px;color:var(--muted)'}, 
+        'Digital inputs (DO, LE) are boolean. Analog inputs (AI, AO, TC, PID) are compared to a value or another signal.')
+    ]),
+    container,
+    el('div', {style:'margin-top:12px'}, save)
+  );
+  
+  renderLEEditor();
   showModal(root, ()=>{ renderPage(); });
 }
 
@@ -2997,17 +3730,98 @@ function openWidgetSettings(w){
   }
 
   if (w.type==='pidpanel'){
-    root.append(tableForm([
-      ['Loop Index', inputNum(w.opts,'loopIndex',1)],
-      ['Show Controls', inputChk(w.opts,'showControls')]
-    ]));
+    // Async load PID loops for dropdown
+    (async () => {
+      try {
+        const pid = await (await fetch('/api/pid')).json();
+        const loops = pid.loops || [];
+        
+        const loopSelector = el('select', {});
+        loops.forEach((loop, idx) => {
+          const name = loop.name || `Loop ${idx}`;
+          const enabled = loop.enabled ? '✓' : '✗';
+          loopSelector.append(el('option', {value: idx}, `${name} (${enabled})`));
+        });
+        loopSelector.value = w.opts.loopIndex || 0;
+        loopSelector.onchange = () => {
+          w.opts.loopIndex = parseInt(loopSelector.value);
+          renderPage();
+        };
+        
+        root.append(tableForm([
+          ['Loop', loopSelector],
+          ['Show Controls', inputChk(w.opts,'showControls')]
+        ]));
+      } catch(e) {
+        root.append(tableForm([
+          ['Loop Index', inputNum(w.opts,'loopIndex',1)],
+          ['Show Controls', inputChk(w.opts,'showControls')]
+        ]));
+      }
+    })();
   }
 
   if (w.type==='motor'){
-    root.append(tableForm([
-      ['Motor Index', inputNum(w.opts,'motorIndex',1)],
-      ['Show Controls', inputChk(w.opts,'showControls')]
-    ]));
+    // Async load motors for dropdown
+    (async () => {
+      try {
+        const motorData = await (await fetch('/api/motors')).json();
+        const motors = motorData.motors || [];
+        
+        const motorSelector = el('select', {});
+        motors.forEach((m, i) => {
+          const included = m.include ? '✓' : '✗';
+          motorSelector.append(el('option', {value: i}, `${m.name || `Motor ${i}`} (${included})`));
+        });
+        motorSelector.value = w.opts.motorIndex || 0;
+        motorSelector.onchange = () => {
+          w.opts.motorIndex = parseInt(motorSelector.value);
+          renderPage();
+        };
+        
+        root.append(tableForm([
+          ['Motor', motorSelector],
+          ['Show Controls', inputChk(w.opts,'showControls')]
+        ]));
+      } catch(e) {
+        root.append(tableForm([
+          ['Motor Index', inputNum(w.opts,'motorIndex',1)],
+          ['Show Controls', inputChk(w.opts,'showControls')]
+        ]));
+      }
+    })();
+  }
+
+  if (w.type==='le'){
+    // Async load LEs for dropdown
+    (async () => {
+      try {
+        const leData = await (await fetch('/api/logic_elements')).json();
+        const elements = leData.elements || [];
+        
+        const leSelector = el('select', {});
+        elements.forEach((le, i) => {
+          const name = le.name || `LE${i}`;
+          const op = (le.operation || 'and').toUpperCase();
+          leSelector.append(el('option', {value: i}, `${name} (${op})`));
+        });
+        leSelector.value = w.opts.leIndex || 0;
+        leSelector.onchange = () => {
+          w.opts.leIndex = parseInt(leSelector.value);
+          renderPage();
+        };
+        
+        root.append(tableForm([
+          ['Logic Element', leSelector],
+          ['Show Inputs', inputChk(w.opts,'showInputs')]
+        ]));
+      } catch(e) {
+        root.append(tableForm([
+          ['LE Index', inputNum(w.opts,'leIndex',1)],
+          ['Show Inputs', inputChk(w.opts,'showInputs')]
+        ]));
+      }
+    })();
   }
 
   showModal(root, ()=>{ renderPage(); });
