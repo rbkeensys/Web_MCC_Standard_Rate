@@ -169,7 +169,7 @@
       "include": true,
       "ch": 0,
       "name": "TC0",
-      "type": "K",
+      "type": "T",
       "offset": 0.0,
       "cutoffHz": 0.51
     },
@@ -177,7 +177,7 @@
       "include": true,
       "ch": 1,
       "name": "TC1",
-      "type": "K",
+      "type": "T",
       "offset": 0.0,
       "cutoffHz": 0.51
     },
@@ -185,7 +185,7 @@
       "include": true,
       "ch": 2,
       "name": "TC2",
-      "type": "K",
+      "type": "T",
       "offset": 0.0,
       "cutoffHz": 0.51
     },
@@ -193,7 +193,7 @@
       "include": true,
       "ch": 3,
       "name": "TC3",
-      "type": "K",
+      "type": "T",
       "offset": 0.0,
       "cutoffHz": 0.51
     },
@@ -201,7 +201,7 @@
       "include": true,
       "ch": 4,
       "name": "TC4",
-      "type": "K",
+      "type": "T",
       "offset": 0.0,
       "cutoffHz": 0.51
     },
@@ -211,7 +211,7 @@
       "name": "TC5",
       "type": "K",
       "offset": 0.0,
-      "cutoffHz": 0.0
+      "cutoffHz": 0.25
     },
     {
       "include": false,

@@ -12,47 +12,25 @@
         false,
         false
       ],
-      "state": true
-    },
-    {
-      "time": 0.5,
-      "relays": [
-        false,
-        true,
-        false,
-        true,
-        false,
-        false,
-        false,
-        false
-      ]
+      "state": true,
+      "type": "AO",
+      "channel": 1
     },
     {
       "time": 1,
       "relays": [
         false,
+        true,
         false,
-        false,
-        false,
+        true,
         false,
         false,
         false,
         false
       ],
-      "state": true
-    },
-    {
-      "time": 1.5,
-      "relays": [
-        true,
-        true,
-        true,
-        true,
-        true,
-        true,
-        true,
-        true
-      ]
+      "type": "AO",
+      "channel": 1,
+      "value": 1
     },
     {
       "time": 2,
@@ -66,25 +44,29 @@
         false,
         false
       ],
+      "state": true,
+      "type": "AO",
       "channel": 1,
-      "state": true
+      "value": 2.5
     },
     {
-      "time": 2.1,
+      "time": 2.5,
       "relays": [
         true,
         true,
-        false,
         true,
         true,
-        false,
-        false,
+        true,
+        true,
+        true,
         true
       ],
-      "state": true
+      "type": "AO",
+      "channel": 1,
+      "value": 3
     },
     {
-      "time": 2.2,
+      "time": 4,
       "relays": [
         false,
         false,
@@ -95,13 +77,49 @@
         false,
         false
       ],
-      "channel": 1
+      "channel": 1,
+      "state": true,
+      "type": "AO",
+      "value": 3.5
     },
     {
-      "time": 2.5,
+      "time": 6,
+      "relays": [
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        false,
+        true
+      ],
+      "state": true,
+      "type": "AO",
+      "channel": 1,
+      "value": 3
+    },
+    {
+      "time": 7,
+      "relays": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "channel": 1,
+      "type": "AO",
+      "value": 1
+    },
+    {
+      "time": 8,
       "duration": 0,
-      "type": "DO",
-      "channel": 0,
+      "type": "AO",
+      "channel": 1,
       "state": false,
       "normallyOpen": true
     }

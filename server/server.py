@@ -20,7 +20,7 @@ from motor_controller import MotorManager, list_serial_ports
 from logic_elements import LEManager
 from app_models import LEFile, LogicElementCfg
 import logging, os
-SERVER_VERSION = "0.9.6"  # PID: state never resets on param changes, only on disable/gate
+SERVER_VERSION = "0.9.7"  # PID: state never resets on param changes, only on disable/gate
 
 
 MCC_TICK_LOG = os.environ.get("MCC_TICK_LOG", "1") == "1"  # print 1 line per second
@@ -168,6 +168,9 @@ class BuzzReq(BaseModel):
 class AOReq(BaseModel):
     index: int
     volts: float
+
+class ResetIReq(BaseModel):
+    loop_index: int
 
 # ---------- Load config/PID/script ----------
 CFG_PATH = CFG_DIR/"config.json"
@@ -668,6 +671,20 @@ def put_pid(body: dict):
     pid_mgr.load(pid_file)
     print("[MCC-Hub] PID file updated")
     return {"ok": True}
+
+@app.post("/api/pid/reset_i")
+def reset_pid_integral(req: ResetIReq):
+    """Reset the integral term for a specific PID loop"""
+    try:
+        idx = req.loop_index
+        if 0 <= idx < len(pid_mgr.loops):
+            pid_mgr.loops[idx].i = 0.0
+            print(f"[MCC-Hub] PID loop {idx} integral term reset to 0")
+            return {"ok": True, "loop_index": idx, "message": f"Loop {idx} integral reset"}
+        else:
+            return {"ok": False, "error": f"Invalid loop index {idx}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 @app.get("/api/script")
 def get_script():

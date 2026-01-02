@@ -2,13 +2,13 @@
   "elements": [
     {
       "enabled": true,
-      "name": "LE0 Motor Control",
+      "name": "LE0: Motor Control",
       "input_a": {
         "kind": "ai",
         "index": 0,
         "comparison": "lt",
         "compare_to_type": "value",
-        "compare_value": 155.0,
+        "compare_value": 550.0,
         "compare_to_kind": "ao",
         "compare_to_index": null
       },
@@ -25,10 +25,10 @@
     },
     {
       "enabled": true,
-      "name": "LE1",
+      "name": "LE1: Heater Enable MAX Element",
       "input_a": {
         "kind": "do",
-        "index": 0,
+        "index": 3,
         "comparison": null,
         "compare_to_type": null,
         "compare_value": null,
@@ -36,11 +36,34 @@
         "compare_to_index": null
       },
       "input_b": {
-        "kind": "do",
+        "kind": "tc",
+        "index": 4,
+        "comparison": "lt",
+        "compare_to_type": "value",
+        "compare_value": 260.0,
+        "compare_to_kind": null,
+        "compare_to_index": null
+      },
+      "operation": "and"
+    },
+    {
+      "enabled": true,
+      "name": "LE2: Heater Enable Steam Max",
+      "input_a": {
+        "kind": "le",
         "index": 1,
         "comparison": null,
         "compare_to_type": null,
         "compare_value": null,
+        "compare_to_kind": null,
+        "compare_to_index": null
+      },
+      "input_b": {
+        "kind": "tc",
+        "index": 3,
+        "comparison": "lt",
+        "compare_to_type": "value",
+        "compare_value": 190.0,
         "compare_to_kind": null,
         "compare_to_index": null
       },

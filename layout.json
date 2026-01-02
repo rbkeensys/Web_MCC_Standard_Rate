@@ -1,36 +1,32 @@
 {
   "pages": [
     {
-      "id": "1c69fcd8-f067-48bd-82a2-fc0090c661fa",
       "name": "Page 1",
       "widgets": [
         {
-          "id": "1007bf7f-127d-4eed-8b8b-0212d1c94830",
-          "type": "aoslider",
-          "x": 818,
-          "y": 14,
+          "id": "b843ffb9-fea8-4e84-9b65-05f9f28e6746",
+          "type": "le",
+          "x": 365,
+          "y": 10,
           "w": 280,
-          "h": 180,
+          "h": 160,
           "opts": {
-            "title": "AO",
-            "aoIndex": 0,
-            "min": 0,
-            "max": 10,
-            "step": 0.0025,
-            "live": true
+            "title": "Logic Element",
+            "leIndex": 0,
+            "showInputs": true
           }
         },
         {
-          "id": "d3e86f24-445b-4f0a-84ad-dc76a7eb27eb",
+          "id": "71afec76-4e66-4421-af0c-06da0b65d0a4",
           "type": "dobutton",
-          "x": 232,
-          "y": 205,
-          "w": 205,
-          "h": 100,
+          "x": 380,
+          "y": 215,
+          "w": 234,
+          "h": 120,
           "opts": {
-            "title": "Motor Enable",
+            "title": "DO",
             "doIndex": 0,
-            "activeHigh": true,
+            "activeHigh": false,
             "mode": "toggle",
             "buzzHz": 10,
             "actuationTime": 0,
@@ -38,21 +34,12 @@
           }
         },
         {
-          "id": "a7e722b7-df08-4882-af8f-0fdf300e27c0",
-          "type": "le",
-          "x": 196,
-          "y": 17,
-          "w": 280,
-          "h": 160,
-          "opts": {}
-        },
-        {
-          "id": "74602f51-4e6f-4d57-af3c-46854e0eedf3",
+          "id": "15479ff2-2812-45b0-bebc-8eb41d080c78",
           "type": "pidpanel",
-          "x": 487,
-          "y": 16,
-          "w": 320,
-          "h": 600,
+          "x": 40,
+          "y": 40,
+          "w": 280,
+          "h": 620,
           "opts": {
             "title": "PID: Motor CMD",
             "loopIndex": 0,
@@ -60,29 +47,97 @@
           }
         },
         {
-          "id": "746f9c0f-5ae5-4d65-9d68-1dc4fd3d144f",
+          "id": "449f8ab9-8e92-462d-9db2-58e63ac24712",
           "type": "gauge",
-          "x": 1205,
-          "y": 72,
+          "x": 659,
+          "y": 8,
           "w": 460,
           "h": 340,
           "opts": {
-            "title": "Gauge",
+            "title": "Servo CMD V",
             "needles": [
               {
                 "kind": "ao",
-                "index": 0,
-                "name": "CMD"
-              },
-              {
-                "kind": "ai",
                 "index": 1,
-                "name": "FB"
+                "name": "Volts"
               }
             ],
             "scale": "manual",
             "min": 0,
-            "max": 10
+            "max": 4
+          }
+        },
+        {
+          "id": "bd036605-05a1-42c6-a3c6-1b1399847040",
+          "type": "gauge",
+          "x": 1587,
+          "y": 7,
+          "w": 460,
+          "h": 340,
+          "opts": {
+            "title": "Pressure",
+            "needles": [
+              {
+                "kind": "ai",
+                "index": 0,
+                "name": "Pressure"
+              }
+            ],
+            "scale": "manual",
+            "min": 0,
+            "max": 160
+          }
+        },
+        {
+          "id": "16b58f50-8b96-46cc-b4cd-db58ac44cda5",
+          "type": "gauge",
+          "x": 1122,
+          "y": 7,
+          "w": 460,
+          "h": 340,
+          "opts": {
+            "title": "RPM",
+            "needles": [
+              {
+                "kind": "pid",
+                "index": 1,
+                "name": "rpm"
+              }
+            ],
+            "scale": "manual",
+            "min": 0,
+            "max": 1200
+          }
+        },
+        {
+          "id": "a6f284c1-c753-4aaf-985f-9e077ecc49e7",
+          "type": "chart",
+          "x": 29,
+          "y": 674,
+          "w": 2010,
+          "h": 368,
+          "opts": {
+            "title": "Chart",
+            "series": [
+              {
+                "kind": "ai",
+                "index": 0,
+                "name": "Pressure"
+              }
+            ],
+            "span": 60,
+            "paused": false,
+            "scale": "manual",
+            "min": 0,
+            "max": 150,
+            "filterHz": 0,
+            "cursorMode": "follow",
+            "yGridLines": 5
+          },
+          "view": {
+            "span": 60,
+            "paused": false,
+            "tFreeze": 0
           }
         }
       ]

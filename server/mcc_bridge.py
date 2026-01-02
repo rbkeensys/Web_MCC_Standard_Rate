@@ -2,7 +2,7 @@
 import asyncio
 from typing import List, Optional
 
-BRIDGE_VERSION = "0.5.0"
+BRIDGE_VERSION = "0.5.4"  # Fixed mcculw TC handling - types configured in InstaCal, not via API
 
 # ---------- Try mcculw (E-1608 AI/AO/DO and optional TCs) ----------
 HAVE_MCCULW = False
@@ -102,8 +102,6 @@ class MCCBridge:
         self._etc_uldaq_ok = False
 
         self._etc_mcc_board: Optional[int] = None
-        self._mcc_can_set_tctype = False
-        self._warned_mcc_tctype = False
 
         # Avoid re-writing TC type every sample
         self._tc_type_set_cache = {}  # ch -> "K"/"J"/...
@@ -161,21 +159,13 @@ class MCCBridge:
 
         # Fallback to mcculw for E-TC (cbTIn) if available
         self._etc_mcc_board = None
-        self._mcc_can_set_tctype = False
-        self._warned_mcc_tctype = False
         if not self._etc_uldaq_ok and HAVE_MCCULW:
             try:
                 self._etc_mcc_board = cfg.boardetc.boardNum
-                # Probe and also check if set_config(TCTYPE) exists on this install
-                try:
-                    from mcculw.enums import InfoType, BoardInfo  # type: ignore
-
-                    self._mcc_can_set_tctype = hasattr(BoardInfo, "TCTYPE")
-                except Exception:
-                    self._mcc_can_set_tctype = False
                 # Smoke test read (ignore value)
                 _ = ul.t_in(self._etc_mcc_board, 0, MCCTempScale.CELSIUS)
                 print("[MCCBridge] E-TC via mcculw ready")
+                print("[MCCBridge] NOTE: TC types must be configured in InstaCal (not via API)")
             except Exception as e:
                 self._etc_mcc_board = None
                 print(f"[MCCBridge] mcculw E-TC open failed: {e}")
@@ -219,12 +209,10 @@ class MCCBridge:
         return vals
 
     # ---------------- Thermocouples (E-TC) ----------------
-    def _set_tc_type_if_needed(self, ch: int, typ: str):
-        """Best effort per-channel TC type set."""
+    def _set_tc_type(self, ch: int, typ: str):
+        """Set TC type for channel. ULDAQ only - mcculw uses InstaCal configuration."""
         t = (typ or "K").upper()
-        if self._tc_type_set_cache.get(ch) == t:
-            return
-
+        
         # ULDAQ path (if config API present)
         if (
             self._etc_uldaq_ok
@@ -245,32 +233,21 @@ class MCCBridge:
                             ConfigItem.TEMPERATURE_SENSOR_TYPE, ch, tc_enum
                         )  # type: ignore
                     self._tc_type_set_cache[ch] = t
-                    return
+                    print(f"[MCCBridge] TC{ch} type SET to '{t}' via ULDAQ")
+                    return True
             except Exception as e:
-                print(f"[MCCBridge] ULDAQ set TC type ch{ch} failed: {e}")
+                print(f"[MCCBridge] ULDAQ set TC{ch} type '{t}' FAILED: {e}")
+                return False
 
-        # mcculw set_config fallback (only if TCTYPE supported on this install)
-        if HAVE_MCCULW and self._etc_mcc_board is not None and self._mcc_can_set_tctype:
-            try:
-                tc_enum = _TC_MAP_MCC.get(t)
-                if tc_enum is not None:
-                    from mcculw.enums import InfoType, BoardInfo  # type: ignore
-
-                    ul.set_config(
-                        InfoType.BOARDINFO,
-                        self._etc_mcc_board,
-                        ch,
-                        BoardInfo.TCTYPE,
-                        tc_enum,
-                    )
-                    self._tc_type_set_cache[ch] = t
-                    return
-            except Exception:
-                if not self._warned_mcc_tctype:
-                    print(
-                        "[MCCBridge] MCCULW: cannot set TC type; using InstaCal setting."
-                    )
-                    self._warned_mcc_tctype = True
+        # mcculw path: TC types are configured in InstaCal, not via API
+        # We just cache the expected type for reference but don't set it
+        if HAVE_MCCULW and self._etc_mcc_board is not None:
+            self._tc_type_set_cache[ch] = t
+            # Don't print warning every time - just note it once during init
+            return True
+        
+        # No TC hardware available
+        return False
 
     def read_tc_all(self) -> List[float]:
         """Return enabled TC channels (ordered by config.thermocouples).
@@ -281,17 +258,51 @@ class MCCBridge:
         # AUTO-DETECTION: On first call, probe all channels to see which are present
         if not self._tc_detected:
             self._tc_detected = True
-            print("[MCCBridge] Auto-detecting thermocouples...")
+            
+            # STEP 1: Configure TC types (ULDAQ only, mcculw uses InstaCal)
+            if self._etc_uldaq_ok:
+                print("[MCCBridge] Configuring TC types via ULDAQ...")
+                for rec in self.cfg.thermocouples:
+                    ch = int(rec.ch)
+                    tc_type = (rec.type or "K").upper()
+                    print(f"[MCCBridge] Setting TC{ch} ({rec.name}) to type '{tc_type}'...")
+                    success = self._set_tc_type(ch, tc_type)
+                    if not success:
+                        print(f"[MCCBridge] WARNING: Failed to set TC{ch} type!")
+            elif HAVE_MCCULW and self._etc_mcc_board is not None:
+                print("[MCCBridge] Using mcculw E-TC - TC types configured in InstaCal")
+                # Just cache the expected types from config
+                for rec in self.cfg.thermocouples:
+                    ch = int(rec.ch)
+                    tc_type = (rec.type or "K").upper()
+                    self._tc_type_set_cache[ch] = tc_type
+            
+            # Print configuration summary
+            if self._tc_type_set_cache:
+                print("[MCCBridge] TC Type Configuration Summary:")
+                for rec in self.cfg.thermocouples:
+                    ch = int(rec.ch)
+                    cached_type = self._tc_type_set_cache.get(ch, "NOT SET")
+                    config_type = (rec.type or "K").upper()
+                    if self._etc_uldaq_ok:
+                        match = "✓" if cached_type == config_type else "✗"
+                        print(f"[MCCBridge]   TC{ch} ({rec.name}): Config={config_type}, Set={cached_type} {match}")
+                    else:
+                        print(f"[MCCBridge]   TC{ch} ({rec.name}): Expected={config_type} (configured in InstaCal)")
+            
+            # STEP 2: Auto-detect which channels are actually present
+            print("[MCCBridge] Auto-detecting connected thermocouples...")
 
             # Probe EVERY configured channel to see if it actually works
             for rec in self.cfg.thermocouples:
                 ch = int(rec.ch)
                 detected = False
+                val = 0.0
 
                 # Try ULDAQ path
                 if self._etc_uldaq_ok and self._etc_uldaq_tdev is not None:
                     try:
-                        self._set_tc_type_if_needed(ch, rec.type or "K")
+                        # Type already set above, just read
                         val = self._etc_uldaq_tdev.t_in(ch, TempScale.CELSIUS, TInFlags.DEFAULT)
                         # Check if we got a reasonable value (not open circuit error)
                         if -200 < val < 2000:  # Reasonable TC range
@@ -303,7 +314,7 @@ class MCCBridge:
                 # Try mcculw fallback
                 elif HAVE_MCCULW and self._etc_mcc_board is not None:
                     try:
-                        self._set_tc_type_if_needed(ch, rec.type or "K")
+                        # Read without setting type (configured in InstaCal)
                         val = ul.t_in(self._etc_mcc_board, ch, MCCTempScale.CELSIUS)
                         # Check if we got a reasonable value
                         if -200 < val < 2000:  # Reasonable TC range
@@ -317,7 +328,7 @@ class MCCBridge:
 
                 config_status = "enabled in config" if rec.include else "disabled in config"
                 if detected:
-                    print(f"[MCCBridge] ✓ TC channel {ch} ({rec.name}) detected and will be enabled ({config_status})")
+                    print(f"[MCCBridge] ✓ TC channel {ch} ({rec.name}) detected at {val:.1f}°C ({config_status})")
                 else:
                     print(f"[MCCBridge] ✗ TC channel {ch} ({rec.name}) NOT detected, will be skipped ({config_status})")
 
@@ -345,7 +356,7 @@ class MCCBridge:
             out: List[float] = []
             for i, ch in enumerate(enabled_channels):
                 tc_type = types[i] if i < len(types) else "K"
-                self._set_tc_type_if_needed(ch, tc_type)
+                # Type already set during detection, just read
                 try:
                     val = self._etc_uldaq_tdev.t_in(
                         int(ch), TempScale.CELSIUS, TInFlags.DEFAULT
@@ -357,11 +368,10 @@ class MCCBridge:
             return out
 
         # mcculw fallback (cbTIn) - only read detected channels
+        # TC types configured in InstaCal, not via API
         if HAVE_MCCULW and self._etc_mcc_board is not None:
             out = []
             for i, ch in enumerate(enabled_channels):
-                tc_type = types[i] if i < len(types) else "K"
-                self._set_tc_type_if_needed(ch, tc_type)
                 try:
                     val = ul.t_in(self._etc_mcc_board, int(ch), MCCTempScale.CELSIUS)
                     out.append(float(val))
@@ -427,6 +437,11 @@ class MCCBridge:
         return list(self._do_bits)
 
     # ---------------- Analog Outputs (E-1608) ----------------
+    @property
+    def ao_cache(self):
+        """Expose AO values for PID feedback"""
+        return self._ao_vals
+
     def _dac_counts(self, volts: float) -> int:
         """Convert volts to 16-bit DAC code for ±10 V range (BIP10V).
         Clamps to [-10.0, +10.0], returns integer in [0, 65535].

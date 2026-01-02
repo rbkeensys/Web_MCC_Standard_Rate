@@ -2175,12 +2175,14 @@ function updateDOButtons(){
 }
 
 /* -------------------------------- PID ----------------------------------- */
+// This version adds a "Reset I" button next to the Apply button
+
 function mountPIDPanel(w, body){
   const line=el('div',{className:'small', id:'pid_'+w.id, style:'display:inline-block'}, 'pv=—, err=—, out=—');
-  
+
   // Enable indicator container (will be populated if gating is configured)
   const enableContainer = el('div', {style:'display:inline-block;margin-left:8px;vertical-align:middle'});
-  
+
   body.append(el('div', {style:'display:flex;align-items:center'}, [line, enableContainer]));
 
   // Fetch PID config to check if enable gate is configured
@@ -2231,7 +2233,34 @@ function mountPIDPanel(w, body){
         await fetch('/api/pid',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(pid2)});
       }}, 'Apply');
 
-      ctr.append(tbl, el('div',{style:'margin-top:6px'}, save));
+      const resetI=el('button',{
+        className:'btn',
+        style:'margin-left:8px',
+        onclick:async()=>{
+          try {
+            const resp = await fetch('/api/pid/reset_i', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({loop_index: w.opts.loopIndex|0})
+            });
+            const result = await resp.json();
+            if (result.ok) {
+              console.log('PID integral term reset:', result.message);
+              // Optional: show brief visual feedback
+              resetI.style.background = '#2faa60';
+              setTimeout(() => { resetI.style.background = ''; }, 300);
+            } else {
+              console.error('Failed to reset integral:', result.error);
+              alert('Failed to reset integral: ' + result.error);
+            }
+          } catch(e) {
+            console.error('Reset I failed:', e);
+            alert('Reset I failed: ' + e.message);
+          }
+        }
+      }, 'Reset I');
+
+      ctr.append(tbl, el('div',{style:'margin-top:6px'}, [save, resetI]));
     });
 
     body.append(ctr);
@@ -2240,23 +2269,23 @@ function mountPIDPanel(w, body){
   (function update(){
     const loop=state.pid[w.opts.loopIndex]||null;
     const p=$('#pid_'+w.id);
-    if(loop&&p){ 
+    if(loop&&p){
       p.textContent=`pv=${(loop.pv??0).toFixed(3)}, err=${(loop.err??0).toFixed(3)}, out=${(loop.out??0).toFixed(3)}`;
-      
+
       // Update enable indicator if gating is configured
       if (pidConfig && pidConfig.enable_gate) {
         let enabled = false;
-        
+
         if (pidConfig.enable_kind === 'do') {
           enabled = state.do?.[pidConfig.enable_index] ? true : false;
         } else if (pidConfig.enable_kind === 'le') {
           enabled = state.le?.[pidConfig.enable_index]?.output ? true : false;
         }
-        
+
         const statusText = enabled ? '1' : '0';
         const color = enabled ? '#2faa60' : '#d84a4a';
         const gated = loop.gated ? ' (GATED)' : '';
-        
+
         enableContainer.innerHTML = `
           <div style="display:inline-block;text-align:center;padding:2px 4px;border:1px solid ${color};border-radius:3px;background:#1a1d2e;min-width:35px;vertical-align:middle">
             <div style="font-size:7px;color:#9aa1b9;line-height:1.1">EN</div>
@@ -2271,6 +2300,7 @@ function mountPIDPanel(w, body){
     requestAnimationFrame(update);
   })();
 }
+
 
 function selectEnum(options, value, onChange){
   const s=el('select',{}); options.forEach(opt=>s.append(el('option',{value:opt},opt)));
@@ -3544,6 +3574,8 @@ async function openLEEditor(){
   showModal(root, ()=>{ renderPage(); });
 }
 
+// This version changes the Save button to always pop up a file save dialog
+
 async function openScriptEditor(){
   const script = await (await fetch('/api/script')).json();
   const events = script.events || [];
@@ -3752,23 +3784,37 @@ async function openScriptEditor(){
     style: 'margin-left:8px'
   }, 'Sort by Time');
 
+  // UPDATED: Save button now opens file dialog AND saves to server
   const saveBtn = el('button', {
     className: 'btn',
     onclick: async () => {
       try {
+        // First save to server (for script player to use)
         await fetch('/api/script', {
           method: 'PUT',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({events})
         });
-        alert('Script saved successfully');
+
+        // Then trigger file download dialog
+        const scriptData = {events: events};
+        const blob = new Blob([JSON.stringify(scriptData, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = el('a', {
+          href: url,
+          download: 'script.json'
+        });
+        a.click();
+        URL.revokeObjectURL(url);
+
+        alert('Script saved to server and file downloaded');
         loadScript(); // Reload for script player
       } catch(e) {
         alert('Save failed: ' + e.message);
       }
     },
     style: 'margin-left:8px'
-  }, 'Save');
+  }, '💾 Save');
 
   root.append(
     title,
@@ -3784,6 +3830,7 @@ async function openScriptEditor(){
 
   showModal(root);
 }
+
 
 /* ----------------------------- form bits -------------------------------- */
 function fieldset(title, inner){ const fs=el('fieldset',{}); fs.append(el('legend',{},title), inner); return fs; }
