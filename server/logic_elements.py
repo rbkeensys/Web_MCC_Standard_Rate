@@ -134,6 +134,11 @@ class LEManager:
                 
                 value = vals[inp.index]
                 
+                # CRITICAL: Treat NaN as False (missing/disconnected sensors)
+                import math
+                if not math.isfinite(value):
+                    return False
+                
                 # Determine comparison value
                 if inp.compare_to_type == "value":
                     compare_val = inp.compare_value if inp.compare_value is not None else 0.0
@@ -158,6 +163,9 @@ class LEManager:
                     
                     if inp.compare_to_index is not None and inp.compare_to_index < len(cvals):
                         compare_val = cvals[inp.compare_to_index]
+                        # Also check if comparison value is NaN
+                        if not math.isfinite(compare_val):
+                            return False
                     else:
                         compare_val = 0.0
                 else:

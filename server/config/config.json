@@ -134,7 +134,7 @@
       "logicElement": null
     },
     {
-      "name": "DO7",
+      "name": "Heat_EN",
       "normallyOpen": false,
       "momentary": false,
       "actuationTime": 0.0,
@@ -222,7 +222,7 @@
       "cutoffHz": 0.0
     },
     {
-      "include": false,
+      "include": true,
       "ch": 7,
       "name": "TC7",
       "type": "K",

@@ -2,7 +2,7 @@
 import asyncio
 from typing import List, Optional
 
-BRIDGE_VERSION = "0.5.4"  # Fixed mcculw TC handling - types configured in InstaCal, not via API
+BRIDGE_VERSION = "0.5.9"  # Fixed: E-TC init no longer fails on open circuit channels
 
 # ---------- Try mcculw (E-1608 AI/AO/DO and optional TCs) ----------
 HAVE_MCCULW = False
@@ -162,8 +162,19 @@ class MCCBridge:
         if not self._etc_uldaq_ok and HAVE_MCCULW:
             try:
                 self._etc_mcc_board = cfg.boardetc.boardNum
-                # Smoke test read (ignore value)
-                _ = ul.t_in(self._etc_mcc_board, 0, MCCTempScale.CELSIUS)
+                # Smoke test read (expect open circuit errors, just verify board responds)
+                try:
+                    _ = ul.t_in(self._etc_mcc_board, 0, MCCTempScale.CELSIUS)
+                except Exception as e:
+                    # Open circuit is expected and OK - it means board is responding
+                    # Only fail if it's a different error (board not found, etc)
+                    err_str = str(e).lower()
+                    if "open connection" in err_str or "open circuit" in err_str:
+                        # This is fine - board is working, just no TC connected
+                        pass
+                    else:
+                        # Real error - board not responding
+                        raise
                 print("[MCCBridge] E-TC via mcculw ready")
                 print("[MCCBridge] NOTE: TC types must be configured in InstaCal (not via API)")
             except Exception as e:
@@ -250,7 +261,8 @@ class MCCBridge:
         return False
 
     def read_tc_all(self) -> List[float]:
-        """Return enabled TC channels (ordered by config.thermocouples).
+        """Return TC channels as sparse array indexed by channel number.
+        Returns list of 8 floats, with NaN for non-detected channels.
         Auto-detects working channels on first call. Missing driver -> []."""
         if self.cfg is None:
             return []
@@ -292,96 +304,124 @@ class MCCBridge:
             
             # STEP 2: Auto-detect which channels are actually present
             print("[MCCBridge] Auto-detecting connected thermocouples...")
+            print(f"[MCCBridge] Probing ALL 8 TC channels (0-7)...")
 
-            # Probe EVERY configured channel to see if it actually works
-            for rec in self.cfg.thermocouples:
-                ch = int(rec.ch)
+            # Create a lookup of configured channels for type info
+            configured_channels = {int(rec.ch): rec for rec in self.cfg.thermocouples}
+
+            # Probe ALL 8 channels regardless of config
+            for ch in range(8):
+                rec = configured_channels.get(ch)
+                tc_name = rec.name if rec else f"TC{ch}"
+                tc_type = rec.type if rec else "K"
+                is_configured = rec is not None
+                is_enabled = rec.include if rec else False
+                
+                print(f"[MCCBridge] Attempting to read TC{ch} ({tc_name})...")
+                print(f"[MCCBridge]   Driver status: uldaq_ok={self._etc_uldaq_ok}, tdev={self._etc_uldaq_tdev is not None}, mcc_board={self._etc_mcc_board}")
                 detected = False
                 val = 0.0
+                error_msg = None
 
                 # Try ULDAQ path
                 if self._etc_uldaq_ok and self._etc_uldaq_tdev is not None:
+                    print(f"[MCCBridge]   Using ULDAQ path...")
                     try:
                         # Type already set above, just read
                         val = self._etc_uldaq_tdev.t_in(ch, TempScale.CELSIUS, TInFlags.DEFAULT)
                         # Check if we got a reasonable value (not open circuit error)
                         if -200 < val < 2000:  # Reasonable TC range
                             detected = True
-                    except Exception:
+                        else:
+                            error_msg = f"Out of range: {val:.1f}°C"
+                    except Exception as e:
                         # Channel not present - this is expected for missing TCs
+                        error_msg = str(e)
                         detected = False
 
                 # Try mcculw fallback
                 elif HAVE_MCCULW and self._etc_mcc_board is not None:
+                    print(f"[MCCBridge]   Using mcculw path...")
                     try:
                         # Read without setting type (configured in InstaCal)
+                        print(f"[MCCBridge]   Calling ul.t_in(board={self._etc_mcc_board}, ch={ch}, CELSIUS)...")
                         val = ul.t_in(self._etc_mcc_board, ch, MCCTempScale.CELSIUS)
+                        print(f"[MCCBridge]   Got value: {val:.1f}°C")
                         # Check if we got a reasonable value
                         if -200 < val < 2000:  # Reasonable TC range
                             detected = True
-                    except Exception:
+                        else:
+                            error_msg = f"Out of range: {val:.1f}°C"
+                    except Exception as e:
                         # Channel not present - this is expected for missing TCs
+                        error_msg = f"{type(e).__name__}: {str(e)}"
+                        print(f"[MCCBridge]   Exception: {error_msg}")
                         detected = False
+                else:
+                    print(f"[MCCBridge]   No TC driver available! HAVE_MCCULW={HAVE_MCCULW}, mcc_board={self._etc_mcc_board}")
+                    error_msg = "No TC driver initialized"
 
-                # Always store detection result (overrides config during runtime)
+                # Always store detection result
                 self._tc_runtime_include[ch] = detected
 
-                config_status = "enabled in config" if rec.include else "disabled in config"
-                if detected:
-                    print(f"[MCCBridge] ✓ TC channel {ch} ({rec.name}) detected at {val:.1f}°C ({config_status})")
+                config_status = ""
+                if is_configured:
+                    config_status = "enabled in config" if is_enabled else "disabled in config"
                 else:
-                    print(f"[MCCBridge] ✗ TC channel {ch} ({rec.name}) NOT detected, will be skipped ({config_status})")
+                    config_status = "NOT in config"
+                
+                if detected:
+                    print(f"[MCCBridge] ✓ TC channel {ch} ({tc_name}) detected at {val:.1f}°C ({config_status})")
+                else:
+                    if error_msg:
+                        print(f"[MCCBridge] ✗ TC channel {ch} ({tc_name}) NOT detected: {error_msg} ({config_status})")
+                    else:
+                        print(f"[MCCBridge] ✗ TC channel {ch} ({tc_name}) NOT detected ({config_status})")
 
             enabled = [ch for ch, en in self._tc_runtime_include.items() if en]
             print(f"[MCCBridge] TC detection complete. Active channels: {enabled}")
+            
+            if enabled and not any(configured_channels.get(ch) for ch in enabled):
+                print(f"[MCCBridge] WARNING: Detected TCs {enabled} but none are in config! Add them to config.json to use them.")
 
-        # Build lists of ONLY detected channels (ignores config include setting)
-        enabled_channels: List[int] = []
-        types: List[str] = []
-        names: List[str] = []
-
+        # Build sparse array: 8 elements indexed by channel number
+        # Non-detected channels get NaN
+        tc_sparse = [float("nan")] * 8
+        
         for rec in self.cfg.thermocouples:
             ch = int(rec.ch)
-            # Only use channels that were actually detected
-            if self._tc_runtime_include.get(ch, False):
-                enabled_channels.append(ch)
-                types.append(rec.type or "K")
-                names.append(rec.name or f"TC{ch}")
-
-        if not enabled_channels:
-            return []
-
-        # ULDAQ path - only read detected channels
-        if self._etc_uldaq_ok and self._etc_uldaq_tdev is not None:
-            out: List[float] = []
-            for i, ch in enumerate(enabled_channels):
-                tc_type = types[i] if i < len(types) else "K"
-                # Type already set during detection, just read
+            if ch < 0 or ch >= 8:
+                continue  # Skip invalid channel numbers
+            
+            # Only read detected channels
+            if not self._tc_runtime_include.get(ch, False):
+                # Not detected - leave as NaN
+                continue
+            
+            tc_type = rec.type or "K"
+            tc_name = rec.name or f"TC{ch}"
+            
+            # ULDAQ path
+            if self._etc_uldaq_ok and self._etc_uldaq_tdev is not None:
                 try:
                     val = self._etc_uldaq_tdev.t_in(
                         int(ch), TempScale.CELSIUS, TInFlags.DEFAULT
                     )
-                    out.append(float(val))
+                    tc_sparse[ch] = float(val)
                 except Exception as e:
-                    print(f"[MCCBridge] ULDAQ t_in ch{ch} ({names[i]}) unexpected error: {e}")
-                    out.append(float("nan"))
-            return out
-
-        # mcculw fallback (cbTIn) - only read detected channels
-        # TC types configured in InstaCal, not via API
-        if HAVE_MCCULW and self._etc_mcc_board is not None:
-            out = []
-            for i, ch in enumerate(enabled_channels):
+                    print(f"[MCCBridge] ULDAQ t_in ch{ch} ({tc_name}) unexpected error: {e}")
+                    tc_sparse[ch] = float("nan")
+            
+            # mcculw fallback
+            elif HAVE_MCCULW and self._etc_mcc_board is not None:
                 try:
                     val = ul.t_in(self._etc_mcc_board, int(ch), MCCTempScale.CELSIUS)
-                    out.append(float(val))
+                    tc_sparse[ch] = float(val)
                 except Exception as e:
-                    print(f"[MCCBridge] MCC t_in ch{ch} ({names[i]}) unexpected error: {e}")
-                    out.append(float("nan"))
-            return out
-
-        # No driver
-        return []
+                    print(f"[MCCBridge] MCC t_in ch{ch} ({tc_name}) unexpected error: {e}")
+                    tc_sparse[ch] = float("nan")
+        
+        return tc_sparse
 
     # ---------------- Digital Outputs (E-1608) ----------------
     def set_do(self, index: int, state: bool, active_high=True):
@@ -503,6 +543,53 @@ class MCCBridge:
 
     def get_ao_snapshot(self):
         return list(self._ao_vals)
+
+    def get_tc_configuration_status(self) -> List[dict]:
+        """
+        Check TC configuration status and return information for UI.
+        For mcculw: We can't read the InstaCal TC type directly, so we return
+        the expected types from config and note they need to be verified in InstaCal.
+        For ULDAQ: We can verify the actual configured types.
+        """
+        if self.cfg is None:
+            return []
+        
+        results = []
+        
+        # Check each configured TC channel
+        for rec in self.cfg.thermocouples:
+            ch = int(rec.ch)
+            expected_type = (rec.type or "K").upper()
+            
+            status = {
+                "channel": ch,
+                "name": rec.name or f"TC{ch}",
+                "expected_type": expected_type,
+                "actual_type": None,  # Can't read from mcculw
+                "detected": self._tc_runtime_include.get(ch, False),
+                "needs_config": False,
+                "config_method": None,
+                "include_in_config": rec.include
+            }
+            
+            # ULDAQ path - we can verify the type was set
+            if self._etc_uldaq_ok and HAVE_ULDAQ:
+                cached = self._tc_type_set_cache.get(ch)
+                status["actual_type"] = cached
+                status["config_method"] = "ULDAQ API"
+                if cached != expected_type:
+                    status["needs_config"] = True
+            
+            # mcculw path - we can't read the type, just inform user
+            elif HAVE_MCCULW and self._etc_mcc_board is not None:
+                status["actual_type"] = "Unknown (set in InstaCal)"
+                status["config_method"] = "InstaCal"
+                # Flag detected channels as needing verification since we can't read the type
+                status["needs_config"] = status["detected"]
+            
+            results.append(status)
+        
+        return results
 
 
 if __name__ == "__main__":

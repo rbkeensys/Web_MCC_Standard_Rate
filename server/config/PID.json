@@ -47,7 +47,7 @@
       "kind": "digital",
       "src": "tc",
       "ai_ch": 3,
-      "out_ch": 4,
+      "out_ch": 3,
       "target": 23.0,
       "kp": 0.1,
       "ki": 0.001,

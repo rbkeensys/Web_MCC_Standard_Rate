@@ -28,7 +28,7 @@
       "name": "LE1: Heater Enable MAX Element",
       "input_a": {
         "kind": "do",
-        "index": 3,
+        "index": 7,
         "comparison": null,
         "compare_to_type": null,
         "compare_value": null,
@@ -37,7 +37,7 @@
       },
       "input_b": {
         "kind": "tc",
-        "index": 4,
+        "index": 7,
         "comparison": "lt",
         "compare_to_type": "value",
         "compare_value": 260.0,

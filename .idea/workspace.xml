@@ -6,7 +6,12 @@
   <component name="ChangeListManager">
     <list default="true" id="6ee747c5-542f-43af-b33e-a97c54c29c34" name="Changes" comment="Minor additions">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/web/app.js" beforeDir="false" afterPath="$PROJECT_DIR$/web/app.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/config/PID.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/PID.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/config/config.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/config.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/config/logic_elements.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/logic_elements.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/logic_elements.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/logic_elements.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/mcc_bridge.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/mcc_bridge.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/server.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/server.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -36,23 +41,24 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;Python.MCC Web App.executor&quot;: &quot;Run&quot;,
-    &quot;Python.mcc_bridge.executor&quot;: &quot;Run&quot;,
-    &quot;Python.server.executor&quot;: &quot;Run&quot;,
-    &quot;Python.test_pid_var.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
-    &quot;ai.playground.ignore.import.keys.banner.in.settings&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/russ/Desktop/Web MCC App/Fast Bak1/Web-MCC-DAQ-and-Control Fast&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.MCC Web App.executor": "Run",
+    "Python.mcc_bridge.executor": "Run",
+    "Python.server.executor": "Run",
+    "Python.test_pid_var.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "ai.playground.ignore.import.keys.banner.in.settings": "true",
+    "git-widget-placeholder": "master",
+    "last_opened_file_path": "C:/Users/russ/Desktop/Web MCC App/Fast Bak1/Web-MCC-DAQ-and-Control Fast",
+    "nodejs_package_manager_path": "npm",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="RunManager">
     <configuration name="MCC Web App" type="PythonConfigurationType" factoryName="Python" temporary="true">
       <module name="Web-MCC-DAQ-and-Control Fast" />
@@ -106,6 +112,7 @@
       <workItem from="1767028412881" duration="10190000" />
       <workItem from="1767197511208" duration="591000" />
       <workItem from="1767372958660" duration="3088000" />
+      <workItem from="1767625532980" duration="4011000" />
     </task>
     <task id="LOCAL-00001" summary="Working standard rate, now has all editors working config, PID, script.  Scripts run too.">
       <option name="closed" value="true" />
@@ -236,6 +243,6 @@
     </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/server_py$MCC_Web_App.coverage" NAME="MCC Web App Coverage Results" MODIFIED="1767125717256" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
+    <SUITE FILE_PATH="coverage/server_py$MCC_Web_App.coverage" NAME="MCC Web App Coverage Results" MODIFIED="1767634694888" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
   </component>
 </project>
