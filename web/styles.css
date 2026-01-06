@@ -32,14 +32,17 @@ body.fullscreen #exitFullscreenBtn { display: block; }
 .palette .btn { width:100%; margin:6px 0; }
 .page-controls { display:flex; gap:8px; margin-top:6px; }
 .canvas { flex:1; position:relative; overflow:auto; padding:0; }
-.widget { position:absolute; display:flex; flex-direction:column; background:var(--card); border:1px solid #262a3e; border-radius:12px; min-width:280px; min-height:180px; }
+.widget { position:absolute; display:flex; flex-direction:column; background:var(--card); border:1px solid #262a3e; border-radius:12px; min-width:280px; }
 .widget.dobutton-widget { min-width:70px; min-height:45px; }
+.widget.le-widget, .widget.mathop-widget { min-height:10px; }
 .widget header { display:flex; align-items:flex-start; gap:8px; padding:8px; cursor:grab; }
+.widget.le-widget header, .widget.mathop-widget header { padding:2px 4px; min-height:14px; font-size:9px; }
 .widget header .title { font-weight:600; }
 .widget header .spacer { flex:1; }
 .widget header .opts { display:flex; flex-wrap:wrap; gap:8px; align-items:center; color:#a8b3cf; max-width:60%; }
 .widget header .tools { display:flex; gap:6px; }
 .widget .body { flex:1; min-height:0; padding:8px; }
+.widget.le-widget .body, .widget.mathop-widget .body { padding:2px; }
 .widget canvas { width:100%; height:100%; }
 legend { color:#a8b3cf; padding:0 6px; }
 .legend { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:2px 0 4px; }

@@ -83,7 +83,7 @@ class PIDManager:
         self.meta = new_meta
         self.last_gate_states = new_gate_states
 
-    def step(self, ai_vals: List[float], tc_vals: List[float], bridge, do_state=None, le_state=None, pid_prev=None) -> List[Dict]:
+    def step(self, ai_vals: List[float], tc_vals: List[float], bridge, do_state=None, le_state=None, pid_prev=None, math_outputs=None) -> List[Dict]:
         import time
         dt = 1.0  # approximate; the outer loop is rate-controlled
         tel = []
@@ -161,6 +161,10 @@ class PIDManager:
                     # Use previous cycle's PID output (cascade control)
                     if d.ai_ch < len(pid_prev):
                         pv = pid_prev[d.ai_ch].get("out", 0.0)
+                elif d.src == "math" and math_outputs:
+                    # Use math operator output
+                    if d.ai_ch < len(math_outputs):
+                        pv = math_outputs[d.ai_ch]
                 u, err, p_term, i_term, d_term = p.step(pv, dt)
                 
                 # Calculate output value

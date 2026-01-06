@@ -266,17 +266,26 @@ load_le()
 
 def load_math():
     global math_mgr
+    print(f"[MathOps-DEBUG] MATH_PATH: {MATH_PATH}")
+    print(f"[MathOps-DEBUG] File exists: {MATH_PATH.exists()}")
     if MATH_PATH.exists():
         try:
             data = json.loads(MATH_PATH.read_text())
+            print(f"[MathOps-DEBUG] Loaded data: {data}")
             math_file = MathOpFile.model_validate(data)
+            print(f"[MathOps-DEBUG] Validated, operators: {len(math_file.operators)}")
             math_mgr.load(math_file)
             log.info(f"[MathOps] Loaded {len(math_mgr.operators)} math operators")
+            print(f"[MathOps-DEBUG] Manager has {len(math_mgr.operators)} operators")
         except Exception as e:
             log.error(f"[MathOps] Failed to load: {e}")
+            print(f"[MathOps-DEBUG] Exception: {e}")
+            import traceback
+            traceback.print_exc()
             math_mgr = MathOpManager()
     else:
         log.info("[MathOps] No math_operators.json found, creating default")
+        print("[MathOps-DEBUG] Creating default empty file")
         MATH_PATH.write_text(json.dumps({"operators": []}, indent=2))
 
 load_math()
@@ -491,13 +500,15 @@ async def acq_loop():
             # --- PIDs (may drive DO/AO) ---
             # Pass DO/LE state so PIDs can check their enable gates
             # Pass previous cycle's PID telemetry for cascade control (pid source)
+            # Pass math outputs so PIDs can use math as source
             telemetry = pid_mgr.step(
                 ai_vals=ai_scaled,
                 tc_vals=tc_vals,
                 bridge=mcc,
                 do_state=do,
                 le_state=le_tel,
-                pid_prev=last_pid_telemetry
+                pid_prev=last_pid_telemetry,
+                math_outputs=[m.get("output", 0.0) for m in math_tel]
             )
             
             # Store for next cycle

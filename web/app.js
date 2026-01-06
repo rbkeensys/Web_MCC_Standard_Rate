@@ -931,10 +931,10 @@ function addWidget(type){
     defaultH = 45;  // Reduced from 90
   } else if (type === 'le') {
     defaultW = 280;  // Compact for LE
-    defaultH = 80;   // Reduced from 160
+    defaultH = 20;   // Reduced from 40 (HALF AGAIN!)
   } else if (type === 'mathop') {
     defaultW = 280;
-    defaultH = 80;   // Reduced from 160
+    defaultH = 20;   // Reduced from 40 (HALF AGAIN!)
   }
   
   const w={ id:crypto.randomUUID(), type, x:40, y:40, w:defaultW, h:defaultH, opts:defaultsFor(type) };
@@ -1321,7 +1321,7 @@ function openWidgetSettings(w) {
         s.displayScale = s.displayScale !== undefined ? s.displayScale : 1.0;
         s.displayOffset = s.displayOffset !== undefined ? s.displayOffset : 0.0;
 
-        const kindSel = selectEnum(['ai', 'ao', 'do', 'tc', 'pid'], s.kind || 'ai', v => {
+        const kindSel = selectEnum(['ai', 'ao', 'do', 'tc', 'pid', 'math'], s.kind || 'ai', v => {
           s.kind = v;
           s.name = s.name || labelFor(s);
         });
@@ -1600,8 +1600,14 @@ function renderPage(){
 }
 
 function renderWidget(w){
-  const classList = w.type === 'dobutton' ? 'widget dobutton-widget' : 'widget';
+  let classList = 'widget';
+  if (w.type === 'dobutton') classList += ' dobutton-widget';
+  if (w.type === 'le') classList += ' le-widget';
+  if (w.type === 'mathop') classList += ' mathop-widget';
   const box=el('div',{className:classList, id:'w_'+w.id});
+  
+  // LE and mathop widgets get minimal headers (via CSS)
+  const isCompact = (w.type === 'le' || w.type === 'mathop');
   
   // LE widgets don't need settings - only close button
   const toolButtons = w.type === 'le' 
@@ -2749,7 +2755,7 @@ function mountPIDPanel(w, body){
     fetch('/api/pid').then(r=>r.json()).then(pid=>{
       const idx=w.opts.loopIndex|0; Object.assign(L, pid.loops?.[idx]||{});
       const selKind=selectEnum(['analog','digital','var'], L.kind||'analog', v=>L.kind=v);
-      const selSrc =selectEnum(['ai','ao','tc','pid'], L.src ||'ai',    v=>L.src=v);
+      const selSrc =selectEnum(['ai','ao','tc','pid','math'], L.src ||'ai',    v=>L.src=v);
       row('enabled', chk(L,'enabled'));
       row('name', txt(L,'name'));
       row('kind', selKind);
@@ -3281,7 +3287,7 @@ function mountMathOpWidget(w, body){
   
   let mathConfig = null;
   
-  // Fetch math operator configuration
+  // Fetch math operator configuration once on mount
   (async () => {
     try {
       const resp = await fetch('/api/math_operators');
@@ -3452,6 +3458,9 @@ function readSelection(sel){
     case 'pid': 
       const pidLoop = state.pid[sel.index|0];
       return pidLoop ? (pidLoop.out ?? 0) : 0;
+    case 'math':
+      const mathOp = state.math?.[sel.index|0];
+      return mathOp ? (mathOp.output ?? 0) : 0;
   }
   return 0;
 }
@@ -3462,7 +3471,9 @@ function makeDragResize(node, w, header, handle){
   
   // Set minimum sizes based on widget type
   const minW = (w.type === 'dobutton') ? 70 : 280;
-  const minH = (w.type === 'dobutton') ? 45 : 180;
+  let minH = 180;
+  if (w.type === 'dobutton') minH = 45;
+  else if (w.type === 'le' || w.type === 'mathop') minH = 10;  // Half of default 20
   
   header.addEventListener('mousedown', (e)=>{
     const tag=(e.target.tagName||'').toUpperCase();
@@ -3791,7 +3802,7 @@ async function openPidForm(){
         el('td', {}, chk(L, 'enabled')),
         el('td', {}, txt(L, 'name')),
         el('td', {}, selectEnum(['analog','digital','var'], L.kind||'analog', v=>L.kind=v)),
-        el('td', {}, selectEnum(['ai','ao','tc','pid'], L.src||'ai', v=>L.src=v)),
+        el('td', {}, selectEnum(['ai','ao','tc','pid','math'], L.src||'ai', v=>L.src=v)),
         el('td', {}, num(L, 'ai_ch', 1)),
         el('td', {}, num(L, 'out_ch', 1)),
         el('td', {}, num(L, 'target', 0.0001)),
@@ -3944,7 +3955,7 @@ async function openMotorEditor(){
       portSelect.value = M.port || 'COM1';
       portSelect.onchange = () => M.port = portSelect.value;
 
-      const srcSelect = selectEnum(['ai', 'ao', 'tc', 'pid'], M.input_source || 'ai', v => M.input_source = v);
+      const srcSelect = selectEnum(['ai', 'ao', 'tc', 'pid', 'math'], M.input_source || 'ai', v => M.input_source = v);
 
       const removeBtn = el('button', {
         className: 'btn danger',
@@ -4482,6 +4493,7 @@ async function openMathEditor(){
         if (result.ok) {
           alert('Math operators saved!');
           closeModal();
+          renderPage(); // Reload all widgets to show updated config
         } else {
           alert('Failed to save: ' + result.error);
         }
