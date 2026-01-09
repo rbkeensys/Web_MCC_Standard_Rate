@@ -711,6 +711,7 @@ function wireUI(){
   $('#editLE')?.addEventListener('click', ()=>openLEEditor());  // Logic Elements
   $('#editMath')?.addEventListener('click', ()=>openMathEditor());  // Math Operators
   $('#editScript')?.addEventListener('click', ()=>openScriptEditor());
+  $('#zeroAI')?.addEventListener('click', ()=>openZeroAIDialog());  // Zero AI channels
   $('#saveLayout')?.addEventListener('click', saveLayoutToFile);
   $('#loadLayout')?.addEventListener('click', loadLayoutFromFile);
   $('#addPage')?.addEventListener('click', addPage);
@@ -1267,6 +1268,72 @@ function selectEnum(options, value, onChange) {
   return s;
 }
 
+// Helper to create a name-based selector for signals
+async function createSignalSelector(kind, currentIndex, onChange) {
+  const select = el('select', {});
+  
+  try {
+    let items = [];
+    
+    if (kind === 'ai' || kind === 'ao') {
+      const cfg = await (await fetch('/api/config')).json();
+      const list = kind === 'ai' ? (cfg.analogs || []) : (cfg.analogOutputs || cfg.ao || []);
+      items = list.map((item, i) => ({
+        index: i,
+        name: item.name || `${kind.toUpperCase()}${i}`
+      }));
+    } else if (kind === 'do') {
+      const cfg = await (await fetch('/api/config')).json();
+      const list = cfg.digitalOutputs || cfg.do || [];
+      items = list.map((item, i) => ({
+        index: i,
+        name: item.name || `DO${i}`
+      }));
+    } else if (kind === 'tc') {
+      const cfg = await (await fetch('/api/config')).json();
+      const tcCount = cfg.boardetc?.numChannels || 8;
+      items = Array.from({length: tcCount}, (_, i) => ({
+        index: i,
+        name: `TC${i}`
+      }));
+    } else if (kind === 'pid') {
+      const data = await (await fetch('/api/pid')).json();
+      items = (data.loops || []).map((loop, i) => ({
+        index: i,
+        name: loop.name || `PID${i}`
+      }));
+    } else if (kind === 'math') {
+      const data = await (await fetch('/api/math_operators')).json();
+      items = (data.operators || []).map((op, i) => ({
+        index: i,
+        name: op.name || `Math${i}`
+      }));
+    } else if (kind === 'le') {
+      const data = await (await fetch('/api/logic_elements')).json();
+      items = (data.elements || []).map((le, i) => ({
+        index: i,
+        name: le.name || `LE${i}`
+      }));
+    }
+    
+    items.forEach(item => {
+      const opt = el('option', {value: item.index}, item.name);
+      select.append(opt);
+    });
+    
+    select.value = currentIndex || 0;
+    select.onchange = () => onChange(parseInt(select.value));
+    
+  } catch (e) {
+    console.error('Failed to load signal names:', e);
+    // Fallback to index
+    select.append(el('option', {value: currentIndex || 0}, `Index ${currentIndex || 0}`));
+    select.value = currentIndex || 0;
+  }
+  
+  return select;
+}
+
 function saveLayoutToFile() {
   const blob = new Blob([JSON.stringify({pages: state.pages}, null, 2)], {type: 'application/json'});
   const a = el('a', {href: URL.createObjectURL(blob), download: 'layout.json'});
@@ -1321,15 +1388,28 @@ function openWidgetSettings(w) {
         s.displayScale = s.displayScale !== undefined ? s.displayScale : 1.0;
         s.displayOffset = s.displayOffset !== undefined ? s.displayOffset : 0.0;
 
-        const kindSel = selectEnum(['ai', 'ao', 'do', 'tc', 'pid', 'math'], s.kind || 'ai', v => {
+        const kindSel = selectEnum(['ai', 'ao', 'do', 'tc', 'pid', 'math'], s.kind || 'ai', async v => {
           s.kind = v;
           s.name = s.name || labelFor(s);
+          // Rebuild selector when kind changes
+          const newSel = await createSignalSelector(v, s.index || 0, newIdx => s.index = newIdx);
+          signalSel.replaceWith(newSel);
+          signalSel = newSel;
         });
-        const idxInput = el('input', {type: 'number', min: 0, step: 1, value: s.index | 0, style: 'width:60px'});
-        idxInput.onchange = () => {
-          s.index = parseInt(idxInput.value) || 0;
-          s.name = s.name || labelFor(s);
-        };
+        
+        let signalSel = el('select', {style: 'width:100px'});
+        signalSel.append(el('option', {value: s.index || 0}, 'Loading...'));
+        
+        // Async load signal selector
+        (async () => {
+          const newSel = await createSignalSelector(s.kind || 'ai', s.index || 0, newIdx => {
+            s.index = newIdx;
+            s.name = s.name || labelFor(s);
+          });
+          signalSel.replaceWith(newSel);
+          signalSel = newSel;
+        })();
+        
         const nameInput = el('input', {
           type: 'text',
           value: (s.name && s.name.length) ? s.name : labelFor(s),
@@ -1366,8 +1446,8 @@ function openWidgetSettings(w) {
         const row = el('div', {style: 'display:flex;gap:4px;align-items:center;margin:4px 0;flex-wrap:wrap'}, [
           el('span', {style: 'min-width:40px;font-size:11px;color:var(--muted)'}, 'Kind:'),
           kindSel,
-          el('span', {style: 'min-width:30px;font-size:11px;color:var(--muted)'}, 'Ch:'),
-          idxInput,
+          el('span', {style: 'min-width:50px;font-size:11px;color:var(--muted)'}, 'Signal:'),
+          signalSel,
           el('span', {style: 'min-width:40px;font-size:11px;color:var(--muted)'}, 'Name:'),
           nameInput,
           el('br', {}),
@@ -2753,16 +2833,27 @@ function mountPIDPanel(w, body){
     const row=(label,input)=>{ const tr=el('tr'); tr.append(el('th',{},label), el('td',{},input)); tb.append(tr); };
     const L={enabled:false,name:'',kind:'analog',src:'ai',ai_ch:0,out_ch:0,target:0,kp:0,ki:0,kd:0,out_min:0,out_max:1,err_min:-1,err_max:1,i_min:-1,i_max:1,enable_gate:false,enable_kind:'do',enable_index:0};
 
-    fetch('/api/pid').then(r=>r.json()).then(pid=>{
+    fetch('/api/pid').then(r=>r.json()).then(async pid=>{
       const idx=w.opts.loopIndex|0; Object.assign(L, pid.loops?.[idx]||{});
       const selKind=selectEnum(['analog','digital','var'], L.kind||'analog', v=>L.kind=v);
-      const selSrc =selectEnum(['ai','ao','tc','pid','math'], L.src ||'ai',    v=>L.src=v);
+      const selSrc =selectEnum(['ai','ao','tc','pid','math'], L.src ||'ai',   async v=>{
+        L.src=v;
+        // Rebuild input selector when source changes
+        const newInputSel = await createSignalSelector(v, L.ai_ch || 0, newIdx => L.ai_ch = newIdx);
+        inputChSel.replaceWith(newInputSel);
+        inputChSel = newInputSel;
+      });
+      
+      // Create async signal selectors
+      let inputChSel = await createSignalSelector(L.src || 'ai', L.ai_ch || 0, newIdx => L.ai_ch = newIdx);
+      let outputChSel = await createSignalSelector(L.kind === 'analog' ? 'ao' : 'do', L.out_ch || 0, newIdx => L.out_ch = newIdx);
+      
       row('enabled', chk(L,'enabled'));
       row('name', txt(L,'name'));
       row('kind', selKind);
       row('src',  selSrc);
-      row('ai_ch',  num(L,'ai_ch',1));
-      row('out_ch', num(L,'out_ch',1));
+      row('input',  inputChSel);
+      row('output', outputChSel);
       row('target', num(L,'target',0.0001));
       row('kp',     num(L,'kp',0.0001));
       row('ki',     num(L,'ki',0.0001));
@@ -3338,7 +3429,7 @@ function mountMathOpWidget(w, body){
       'sqr': 'x²', 'sqrt': '√', 'log10': 'log₁₀', 'ln': 'ln',
       'exp': 'exp', 'sin': 'sin', 'cos': 'cos', 'tan': 'tan',
       'asin': 'asin', 'acos': 'acos', 'atan': 'atan', 'atan2': 'atan2',
-      'abs': '|x|', 'neg': '−x'
+      'abs': '|x|', 'neg': '−x', 'filter': '🔽'
     };
     const opDisplay = opSymbols[mathConfig.operation] || mathConfig.operation;
     
@@ -3394,30 +3485,53 @@ function mountMathOpWidget(w, body){
         `;
       } else {
         // Unary: [OP]([A]) = [OUT]
-        body.innerHTML = `
-          <div style="display:flex;gap:2px;justify-content:center;align-items:center;height:100%;padding:2px">
-            <div style="text-align:center;padding:3px;border:1px solid #2a3046;border-radius:3px;background:#1a1d2e;flex:0 0 45px;overflow:hidden">
-              <div style="font-size:12px;font-weight:bold;color:#e0af68;line-height:1.4">${opDisplay}</div>
+        // Special layout for filter operation
+        if (mathConfig.operation === 'filter') {
+          const rawVal = mathOp.raw_value !== undefined ? mathOp.raw_value.toFixed(3) : valA;
+          const filterHz = mathOp.filter_hz || 1.0;
+          body.innerHTML = `
+            <div style="display:flex;gap:2px;justify-content:center;align-items:center;height:100%;padding:2px">
+              <div style="text-align:center;padding:3px;border:1px solid #2a3046;border-radius:3px;background:#1a1d2e;flex:1;min-width:0;overflow:hidden">
+                <div style="font-size:7px;color:#79c0ff;line-height:1.2">${labelA}</div>
+                <div style="font-size:14px;font-weight:bold;line-height:1.2;color:#9aa1b9">${rawVal}</div>
+                <div style="font-size:6px;color:#7a7f8f;line-height:1.2;margin-top:1px">${filterHz}Hz</div>
+              </div>
+              <div style="text-align:center;padding:3px;border:1px solid #2a3046;border-radius:3px;background:#1a1d2e;flex:0 0 35px;overflow:hidden">
+                <div style="font-size:12px;font-weight:bold;color:#e0af68;line-height:1.4">${opDisplay}</div>
+              </div>
+              <div style="text-align:center;padding:3px;border:2px solid #7aa2f7;border-radius:3px;background:#1a1d2e;flex:1;min-width:0;overflow:hidden">
+                <div style="font-size:7px;color:#9aa1b9;line-height:1.2">FILT</div>
+                <div style="font-size:16px;font-weight:bold;line-height:1.2;color:#7aa2f7">${output}</div>
+              </div>
             </div>
-            <div style="text-align:center;padding:2px;flex:0 0 10px">
-              <div style="font-size:16px;color:#7a7f8f;line-height:1.4">(</div>
+          `;
+        } else {
+          // Standard unary: [OP]([A]) = [OUT]
+          body.innerHTML = `
+            <div style="display:flex;gap:2px;justify-content:center;align-items:center;height:100%;padding:2px">
+              <div style="text-align:center;padding:3px;border:1px solid #2a3046;border-radius:3px;background:#1a1d2e;flex:0 0 45px;overflow:hidden">
+                <div style="font-size:12px;font-weight:bold;color:#e0af68;line-height:1.4">${opDisplay}</div>
+              </div>
+              <div style="text-align:center;padding:2px;flex:0 0 10px">
+                <div style="font-size:16px;color:#7a7f8f;line-height:1.4">(</div>
+              </div>
+              <div style="text-align:center;padding:3px;border:1px solid #2a3046;border-radius:3px;background:#1a1d2e;flex:1;min-width:0;overflow:hidden">
+                <div style="font-size:7px;color:#79c0ff;line-height:1.2">${labelA}</div>
+                <div style="font-size:14px;font-weight:bold;line-height:1.2;color:#9aa1b9">${valA}</div>
+              </div>
+              <div style="text-align:center;padding:2px;flex:0 0 10px">
+                <div style="font-size:16px;color:#7a7f8f;line-height:1.4">)</div>
+              </div>
+              <div style="text-align:center;padding:2px;flex:0 0 15px">
+                <div style="font-size:14px;color:#9aa1b9;line-height:1.4">=</div>
+              </div>
+              <div style="text-align:center;padding:3px;border:2px solid #7aa2f7;border-radius:3px;background:#1a1d2e;flex:1;min-width:0;overflow:hidden">
+                <div style="font-size:7px;color:#9aa1b9;line-height:1.2">OUT</div>
+                <div style="font-size:16px;font-weight:bold;line-height:1.2;color:#7aa2f7">${output}</div>
+              </div>
             </div>
-            <div style="text-align:center;padding:3px;border:1px solid #2a3046;border-radius:3px;background:#1a1d2e;flex:1;min-width:0;overflow:hidden">
-              <div style="font-size:7px;color:#79c0ff;line-height:1.2">${labelA}</div>
-              <div style="font-size:14px;font-weight:bold;line-height:1.2;color:#9aa1b9">${valA}</div>
-            </div>
-            <div style="text-align:center;padding:2px;flex:0 0 10px">
-              <div style="font-size:16px;color:#7a7f8f;line-height:1.4">)</div>
-            </div>
-            <div style="text-align:center;padding:2px;flex:0 0 15px">
-              <div style="font-size:14px;color:#9aa1b9;line-height:1.4">=</div>
-            </div>
-            <div style="text-align:center;padding:3px;border:2px solid #7aa2f7;border-radius:3px;background:#1a1d2e;flex:1;min-width:0;overflow:hidden">
-              <div style="font-size:7px;color:#9aa1b9;line-height:1.2">OUT</div>
-              <div style="font-size:16px;font-weight:bold;line-height:1.2;color:#7aa2f7">${output}</div>
-            </div>
-          </div>
-        `;
+          `;
+        }
       }
     } else {
       // Compact: just show output
@@ -4138,8 +4252,12 @@ async function openLEEditor(){
     // Type and Index row - compact layout
     const kindRow = el('div', {className: 'row', style: 'margin-bottom:8px'});
     const kindSelect = el('select', {
-      onchange: e => {
+      onchange: async e => {
         input.kind = e.target.value;
+        // Rebuild signal selector
+        const newSel = await createSignalSelector(e.target.value, input.index || 0, idx => input.index = idx);
+        signalSelect.replaceWith(newSel);
+        signalSelect = newSel;
         // Clear comparison fields when switching to non-analog types
         if (!['ai', 'ao', 'tc', 'pid_u'].includes(e.target.value)) {
           delete input.comparison;
@@ -4166,18 +4284,18 @@ async function openLEEditor(){
     // Set the value AFTER adding options
     kindSelect.value = input.kind || 'do';
     
-    const indexInput = el('input', {
-      type: 'number',
-      value: input.index,
-      min: 0,
-      step: 1,
-      oninput: e => input.index = parseInt(e.target.value) || 0,
-      style: 'width:80px'
-    });
+    // Create signal selector
+    let signalSelect = el('select', {style: 'width:120px'});
+    signalSelect.append(el('option', {}, 'Loading...'));
+    (async () => {
+      const newSel = await createSignalSelector(input.kind || 'do', input.index || 0, idx => input.index = idx);
+      signalSelect.replaceWith(newSel);
+      signalSelect = newSel;
+    })();
     
     kindRow.append(
       el('label', {}, ['Type: ', kindSelect]),
-      el('label', {}, ['Index: ', indexInput])
+      el('label', {}, ['Signal: ', signalSelect])
     );
     div.append(kindRow);
 
@@ -4235,25 +4353,31 @@ async function openLEEditor(){
         const signalRow = el('div', {className: 'row', style: 'margin-bottom:8px'});
         
         const signalKindSelect = el('select', {
-          onchange: e => input.compare_to_kind = e.target.value
+          onchange: async e => {
+            input.compare_to_kind = e.target.value;
+            // Rebuild selector
+            const newSel = await createSignalSelector(e.target.value, input.compare_to_index || 0, idx => input.compare_to_index = idx);
+            compareSignalSelect.replaceWith(newSel);
+            compareSignalSelect = newSel;
+          }
         });
         ['ai', 'ao', 'tc', 'pid_u'].forEach(k => {
           signalKindSelect.append(el('option', {value: k}, k.toUpperCase()));
         });
         signalKindSelect.value = input.compare_to_kind || 'ai';
         
-        const signalIndexInput = el('input', {
-          type: 'number',
-          value: input.compare_to_index ?? 0,
-          min: 0,
-          step: 1,
-          oninput: e => input.compare_to_index = parseInt(e.target.value) || 0,
-          style: 'width:80px'
-        });
+        // Create signal selector
+        let compareSignalSelect = el('select', {style: 'width:120px'});
+        compareSignalSelect.append(el('option', {}, 'Loading...'));
+        (async () => {
+          const newSel = await createSignalSelector(input.compare_to_kind || 'ai', input.compare_to_index || 0, idx => input.compare_to_index = idx);
+          compareSignalSelect.replaceWith(newSel);
+          compareSignalSelect = newSel;
+        })();
         
         signalRow.append(
-          el('label', {}, ['Signal: ', signalKindSelect]),
-          el('label', {}, ['Index: ', signalIndexInput])
+          el('label', {}, ['Type: ', signalKindSelect]),
+          el('label', {}, ['Signal: ', compareSignalSelect])
         );
         div.append(signalRow);
       }
@@ -4399,7 +4523,7 @@ async function openMathEditor(){
       });
       
       const opGroups = {
-        'Unary': ['sqr','sqrt','log10','ln','exp','sin','cos','tan','asin','acos','atan','abs','neg'],
+        'Unary': ['sqr','sqrt','log10','ln','exp','sin','cos','tan','asin','acos','atan','abs','neg','filter'],
         'Binary': ['add','sub','mul','div','mod','pow','min','max','atan2']
       };
       Object.entries(opGroups).forEach(([group, ops]) => {
@@ -4410,6 +4534,21 @@ async function openMathEditor(){
       opSelect.value = op.operation || 'add';
       opRow.append(el('label', {}, ['Operation: ', opSelect]));
       card.append(opRow);
+
+      // Filter cutoff frequency (only for filter operation)
+      if (op.operation === 'filter') {
+        const filterRow = el('div', {style: 'margin:12px 0'});
+        const filterInput = el('input', {
+          type: 'number',
+          min: 0.01,
+          step: 0.1,
+          value: op.filter_hz || 1.0,
+          oninput: e => op.filter_hz = parseFloat(e.target.value) || 1.0,
+          style: 'width:100px'
+        });
+        filterRow.append(el('label', {}, ['Cutoff Frequency (Hz): ', filterInput]));
+        card.append(filterRow);
+      }
 
       // Input A
       const inputASection = el('div', {style: 'border:1px solid #2a3046; padding:8px; margin-bottom:8px; border-radius:6px'});
@@ -4434,17 +4573,21 @@ async function openMathEditor(){
     const div = el('div', {className: 'row'});
     
     const kindSelect = el('select', {
-      onchange: e => {
+      onchange: async e => {
         input.kind = e.target.value;
         // Show/hide value input based on kind
         if (e.target.value === 'value') {
-          indexInput.style.display = 'none';
-          indexLabel.style.display = 'none';
+          signalSelect.style.display = 'none';
+          signalLabel.style.display = 'none';
           valueInput.style.display = 'block';
           valueLabel.style.display = 'flex';
         } else {
-          indexInput.style.display = 'block';
-          indexLabel.style.display = 'flex';
+          // Rebuild signal selector for new kind
+          const newSel = await createSignalSelector(e.target.value, input.index || 0, idx => input.index = idx);
+          signalSelect.replaceWith(newSel);
+          signalSelect = newSel;
+          signalSelect.style.display = 'block';
+          signalLabel.style.display = 'flex';
           valueInput.style.display = 'none';
           valueLabel.style.display = 'none';
         }
@@ -4456,14 +4599,14 @@ async function openMathEditor(){
     });
     kindSelect.value = input.kind || 'ai';
     
-    const indexInput = el('input', {
-      type: 'number',
-      min: 0,
-      step: 1,
-      value: input.index || 0,
-      oninput: e => input.index = parseInt(e.target.value) || 0,
-      style: 'flex:1'
-    });
+    // Create signal selector (async)
+    let signalSelect = el('select', {style: 'flex:1'});
+    signalSelect.append(el('option', {}, 'Loading...'));
+    (async () => {
+      const newSel = await createSignalSelector(input.kind || 'ai', input.index || 0, idx => input.index = idx);
+      signalSelect.replaceWith(newSel);
+      signalSelect = newSel;
+    })();
     
     const valueInput = el('input', {
       type: 'number',
@@ -4473,12 +4616,12 @@ async function openMathEditor(){
       style: 'flex:1; display:' + (input.kind === 'value' ? 'block' : 'none')
     });
     
-    const indexLabel = el('label', {style: 'flex:1; display:' + (input.kind === 'value' ? 'none' : 'flex')}, ['Index: ', indexInput]);
+    const signalLabel = el('label', {style: 'flex:1; display:' + (input.kind === 'value' ? 'none' : 'flex')}, ['Signal: ', signalSelect]);
     const valueLabel = el('label', {style: 'flex:1; display:' + (input.kind === 'value' ? 'flex' : 'none')}, ['Value: ', valueInput]);
     
     div.append(
       el('label', {style: 'flex:1'}, ['Kind: ', kindSelect]),
-      indexLabel,
+      signalLabel,
       valueLabel
     );
     
@@ -4526,6 +4669,164 @@ async function openMathEditor(){
     el('div', {className: 'row', style: 'gap:8px;margin-top:20px'}, [saveBtn, downloadBtn])
   );
 
+  showModal(root);
+}
+
+async function openZeroAIDialog() {
+  const cfg = await (await fetch('/api/config')).json();
+  const analogs = cfg.analogs || [];
+  
+  const root = el('div', {});
+  const title = el('h2', {}, 'Zero AI Channels');
+  const subtitle = el('p', {style: 'color:#a8b3cf;margin-bottom:16px'}, 
+    'Select channels to zero. This will average the current readings and adjust offsets.');
+  
+  // Configuration inputs
+  const configRow = el('div', {style: 'margin:16px 0;padding:12px;background:#1a1d2e;border-radius:6px;display:flex;gap:20px;flex-wrap:wrap'});
+  
+  const avgInput = el('input', {
+    type: 'number',
+    min: 0.1,
+    step: 0.1,
+    value: 1.0,
+    style: 'width:80px;margin-left:8px'
+  });
+  
+  const balanceInput = el('input', {
+    type: 'number',
+    step: 'any',
+    value: 0.0,
+    style: 'width:100px;margin-left:8px'
+  });
+  
+  configRow.append(
+    el('div', {style: 'flex:1;min-width:300px'}, [
+      el('label', {}, ['Averaging Period (sec): ', avgInput]),
+      el('div', {style: 'color:#7a7f8f;font-size:10px;margin-top:4px;margin-left:8px'}, 
+        'Time to average readings')
+    ]),
+    el('div', {style: 'flex:1;min-width:300px'}, [
+      el('label', {}, ['Balance To Value: ', balanceInput]),
+      el('div', {style: 'color:#7a7f8f;font-size:10px;margin-top:4px;margin-left:8px'}, 
+        'Target value after zeroing (e.g., 150.5 psi)')
+    ])
+  );
+  
+  // AI channel checkboxes
+  const channelList = el('div', {style: 'max-height:400px;overflow:auto'});
+  const selectedChannels = new Set();
+  
+  analogs.forEach((ai, idx) => {
+    const row = el('div', {
+      style: 'padding:8px;margin:4px 0;background:#1a1d2e;border-radius:4px;display:flex;align-items:center;gap:12px'
+    });
+    
+    const checkbox = el('input', {
+      type: 'checkbox',
+      id: `zero_ai_${idx}`,
+      onchange: e => {
+        if (e.target.checked) selectedChannels.add(idx);
+        else selectedChannels.delete(idx);
+      }
+    });
+    
+    const label = el('label', {
+      htmlFor: `zero_ai_${idx}`,
+      style: 'flex:1;cursor:pointer;display:flex;align-items:center;gap:8px'
+    });
+    
+    const aiName = el('span', {style: 'font-weight:600;min-width:150px'}, ai.name || `AI${idx}`);
+    const currentVal = el('span', {
+      id: `zero_current_${idx}`,
+      style: 'color:#7aa2f7;font-family:monospace'
+    }, 'Loading...');
+    
+    label.append(checkbox, aiName, currentVal);
+    row.append(label);
+    channelList.append(row);
+  });
+  
+  // Update current values periodically
+  const updateInterval = setInterval(() => {
+    if (!state.ai) return;
+    analogs.forEach((ai, idx) => {
+      const span = document.getElementById(`zero_current_${idx}`);
+      if (span && state.ai[idx] !== undefined) {
+        const val = state.ai[idx];
+        span.textContent = Number.isFinite(val) ? val.toFixed(4) : '---';
+      }
+    });
+  }, 100);
+  
+  // Zero button
+  const zeroBtn = el('button', {
+    className: 'btn primary',
+    onclick: async () => {
+      if (selectedChannels.size === 0) {
+        alert('Please select at least one channel to zero.');
+        return;
+      }
+      
+      const avgPeriod = parseFloat(avgInput.value) || 1.0;
+      const balanceToValue = parseFloat(balanceInput.value) || 0.0;
+      const channelsToZero = Array.from(selectedChannels);
+      
+      zeroBtn.disabled = true;
+      zeroBtn.textContent = 'Averaging...';
+      
+      try {
+        // Call backend to perform zeroing
+        const resp = await fetch('/api/zero_ai', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            channels: channelsToZero,
+            averaging_period: avgPeriod,
+            balance_to_value: balanceToValue
+          })
+        });
+        
+        const result = await resp.json();
+        
+        if (result.ok) {
+          const balanceMsg = balanceToValue !== 0 ? `\\nBalanced to: ${balanceToValue}` : '';
+          alert(`Successfully zeroed ${channelsToZero.length} channel(s)!${balanceMsg}\\n\\n` +
+                `Offsets updated:\\n` + 
+                result.offsets.map(o => 
+                  `AI${o.channel}: ${o.old.toFixed(4)} → ${o.new.toFixed(4)} (avg: ${o.avg.toFixed(4)})`
+                ).join('\\n'));
+          clearInterval(updateInterval);
+          closeModal();
+        } else {
+          alert('Failed to zero channels: ' + (result.error || 'Unknown error'));
+          zeroBtn.disabled = false;
+          zeroBtn.textContent = '⚡ Zero Selected Channels';
+        }
+      } catch (e) {
+        alert('Network error: ' + e.message);
+        zeroBtn.disabled = false;
+        zeroBtn.textContent = '⚡ Zero Selected Channels';
+      }
+    }
+  }, '⚡ Zero Selected Channels');
+  
+  const cancelBtn = el('button', {
+    className: 'btn',
+    onclick: () => {
+      clearInterval(updateInterval);
+      closeModal();
+    }
+  }, 'Cancel');
+  
+  root.append(
+    title,
+    subtitle,
+    configRow,
+    el('h3', {style: 'margin:20px 0 12px 0'}, 'Select Channels:'),
+    channelList,
+    el('div', {className: 'row', style: 'gap:8px;margin-top:20px'}, [zeroBtn, cancelBtn])
+  );
+  
   showModal(root);
 }
 

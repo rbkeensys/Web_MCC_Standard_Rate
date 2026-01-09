@@ -317,15 +317,12 @@ class MCCBridge:
                 is_configured = rec is not None
                 is_enabled = rec.include if rec else False
                 
-                print(f"[MCCBridge] Attempting to read TC{ch} ({tc_name})...")
-                print(f"[MCCBridge]   Driver status: uldaq_ok={self._etc_uldaq_ok}, tdev={self._etc_uldaq_tdev is not None}, mcc_board={self._etc_mcc_board}")
                 detected = False
                 val = 0.0
                 error_msg = None
 
                 # Try ULDAQ path
                 if self._etc_uldaq_ok and self._etc_uldaq_tdev is not None:
-                    print(f"[MCCBridge]   Using ULDAQ path...")
                     try:
                         # Type already set above, just read
                         val = self._etc_uldaq_tdev.t_in(ch, TempScale.CELSIUS, TInFlags.DEFAULT)
@@ -341,12 +338,9 @@ class MCCBridge:
 
                 # Try mcculw fallback
                 elif HAVE_MCCULW and self._etc_mcc_board is not None:
-                    print(f"[MCCBridge]   Using mcculw path...")
                     try:
                         # Read without setting type (configured in InstaCal)
-                        print(f"[MCCBridge]   Calling ul.t_in(board={self._etc_mcc_board}, ch={ch}, CELSIUS)...")
                         val = ul.t_in(self._etc_mcc_board, ch, MCCTempScale.CELSIUS)
-                        print(f"[MCCBridge]   Got value: {val:.1f}°C")
                         # Check if we got a reasonable value
                         if -200 < val < 2000:  # Reasonable TC range
                             detected = True
@@ -355,10 +349,8 @@ class MCCBridge:
                     except Exception as e:
                         # Channel not present - this is expected for missing TCs
                         error_msg = f"{type(e).__name__}: {str(e)}"
-                        print(f"[MCCBridge]   Exception: {error_msg}")
                         detected = False
                 else:
-                    print(f"[MCCBridge]   No TC driver available! HAVE_MCCULW={HAVE_MCCULW}, mcc_board={self._etc_mcc_board}")
                     error_msg = "No TC driver initialized"
 
                 # Always store detection result

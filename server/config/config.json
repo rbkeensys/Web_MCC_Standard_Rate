@@ -12,35 +12,35 @@
   },
   "analogs": [
     {
-      "name": "Pressure",
-      "slope": 250.0,
-      "offset": -123.2,
-      "cutoffHz": 0.2,
+      "name": "DP Flow 1",
+      "slope": 50.0,
+      "offset": -23.506858132102273,
+      "cutoffHz": 0.1,
       "units": "psi",
       "include": true
     },
     {
-      "name": "Valve FB",
-      "slope": 1.0,
-      "offset": 0.0,
-      "cutoffHz": 10.0,
-      "units": "volts",
-      "include": true
-    },
-    {
-      "name": "In Temp",
-      "slope": 22.0,
-      "offset": 32.0,
+      "name": "DP Flow 2",
+      "slope": 50.0,
+      "offset": -23.913990367542613,
       "cutoffHz": 0.1,
-      "units": "deg",
+      "units": "psi",
       "include": true
     },
     {
-      "name": "AI3",
-      "slope": 1.0,
-      "offset": 0.0,
-      "cutoffHz": 0.0,
-      "units": "",
+      "name": "DP Level 1",
+      "slope": 163.154,
+      "offset": -84.85,
+      "cutoffHz": 0.1,
+      "units": "psi",
+      "include": true
+    },
+    {
+      "name": "DP Level 2",
+      "slope": 250.0,
+      "offset": -123.3201042864235,
+      "cutoffHz": 0.1,
+      "units": "psi",
       "include": true
     },
     {
@@ -169,7 +169,7 @@
       "include": true,
       "ch": 0,
       "name": "TC0",
-      "type": "T",
+      "type": "K",
       "offset": 0.0,
       "cutoffHz": 0.1
     },
@@ -177,7 +177,7 @@
       "include": true,
       "ch": 1,
       "name": "TC1",
-      "type": "T",
+      "type": "K",
       "offset": 0.0,
       "cutoffHz": 0.1
     },
@@ -185,7 +185,7 @@
       "include": true,
       "ch": 2,
       "name": "TC2",
-      "type": "T",
+      "type": "K",
       "offset": 0.0,
       "cutoffHz": 0.1
     },
@@ -193,15 +193,15 @@
       "include": true,
       "ch": 3,
       "name": "TC3",
-      "type": "T",
+      "type": "K",
       "offset": 0.0,
       "cutoffHz": 0.1
     },
     {
-      "include": true,
+      "include": false,
       "ch": 4,
       "name": "TC4",
-      "type": "T",
+      "type": "K",
       "offset": 0.0,
       "cutoffHz": 0.1
     },
@@ -209,7 +209,7 @@
       "include": false,
       "ch": 5,
       "name": "TC5",
-      "type": "K",
+      "type": "T",
       "offset": 0.0,
       "cutoffHz": 0.1
     },
@@ -217,7 +217,7 @@
       "include": false,
       "ch": 6,
       "name": "TC6",
-      "type": "K",
+      "type": "T",
       "offset": 0.0,
       "cutoffHz": 0.1
     },
@@ -225,7 +225,7 @@
       "include": true,
       "ch": 7,
       "name": "TC7",
-      "type": "K",
+      "type": "T",
       "offset": 0.0,
       "cutoffHz": 0.1
     }

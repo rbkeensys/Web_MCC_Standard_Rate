@@ -4,12 +4,15 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6ee747c5-542f-43af-b33e-a97c54c29c34" name="Changes" comment="Fixed some math issues and graphics, finally got the LE's and MathE's to scale better in height.  TODO: Fix LE to scale text and boxes as window resizes and ME, LE need to have smaller min widths in .css.">
+    <list default="true" id="6ee747c5-542f-43af-b33e-a97c54c29c34" name="Changes" comment="FIXED LE, ME sizing minimums">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/config/PID.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/PID.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/config/config.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/config.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/config/logic_elements.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/logic_elements.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/mcc_bridge.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/mcc_bridge.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/server.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/server.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/web/app.js" beforeDir="false" afterPath="$PROJECT_DIR$/web/app.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/web/index.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/web/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/web/styles.css" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -114,7 +117,9 @@
       <workItem from="1767625532980" duration="19039000" />
       <workItem from="1767714458545" duration="572000" />
       <workItem from="1767715312073" duration="3216000" />
-      <workItem from="1767828110374" duration="995000" />
+      <workItem from="1767828110374" duration="1038000" />
+      <workItem from="1767904189408" duration="5366000" />
+      <workItem from="1767973671090" duration="2639000" />
     </task>
     <task id="LOCAL-00001" summary="Working standard rate, now has all editors working config, PID, script.  Scripts run too.">
       <option name="closed" value="true" />
@@ -236,7 +241,15 @@
       <option name="project" value="LOCAL" />
       <updated>1767716552319</updated>
     </task>
-    <option name="localTasksCounter" value="16" />
+    <task id="LOCAL-00016" summary="FIXED LE, ME sizing minimums">
+      <option name="closed" value="true" />
+      <created>1767830016077</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1767830016077</updated>
+    </task>
+    <option name="localTasksCounter" value="17" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -267,7 +280,8 @@
     <MESSAGE value="Fixed LE when TC missing, now shows 'X'.  TODO: Add MATH elements so I can do dP calcs (unary ops sqr, sqrt, log, ln, exp, sin, cos, tan, mod) (binary ops: +-X/)" />
     <MESSAGE value="Added MATH elements are working, added PID popup of error values." />
     <MESSAGE value="Fixed some math issues and graphics, finally got the LE's and MathE's to scale better in height.  TODO: Fix LE to scale text and boxes as window resizes and ME, LE need to have smaller min widths in .css." />
-    <option name="LAST_COMMIT_MESSAGE" value="Fixed some math issues and graphics, finally got the LE's and MathE's to scale better in height.  TODO: Fix LE to scale text and boxes as window resizes and ME, LE need to have smaller min widths in .css." />
+    <MESSAGE value="FIXED LE, ME sizing minimums" />
+    <option name="LAST_COMMIT_MESSAGE" value="FIXED LE, ME sizing minimums" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -281,6 +295,6 @@
     </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/server_py$MCC_Web_App.coverage" NAME="MCC Web App Coverage Results" MODIFIED="1767828490683" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
+    <SUITE FILE_PATH="coverage/server_py$MCC_Web_App.coverage" NAME="MCC Web App Coverage Results" MODIFIED="1767977438903" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
   </component>
 </project>

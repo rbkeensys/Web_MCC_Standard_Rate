@@ -56,7 +56,7 @@ legend { color:#a8b3cf; padding:0 6px; }
 .icon { background:#1e2235; border:1px solid #2a3048; color:#cfd6f0; border-radius:8px; padding:4px 8px; cursor:pointer; user-select:none; }
 .icon:hover { background:#242a4a; }
 .resize { position:absolute; right:6px; bottom:6px; width:14px; height:14px; border-right:2px solid #3e4668; border-bottom:2px solid #3e4668; cursor:nwse-resize; opacity:0.7; }
-.widget.le-widget .resize, .widget.mathop-widget .resize { right:11px; }
+.widget.le-widget .resize, .widget.mathop-widget .resize { right:1px; }
 .row { display:flex; gap:8px; align-items:center; }
 .row>* { flex:1; }
 hr.soft { border:0; border-top:1px solid #1f2330; margin:6px 0; }

@@ -37,7 +37,7 @@
       },
       "input_b": {
         "kind": "tc",
-        "index": 4,
+        "index": 3,
         "comparison": "lt",
         "compare_to_type": "value",
         "compare_value": 250.0,

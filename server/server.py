@@ -1,6 +1,6 @@
 # server/server.py
 # Python 3.10+
-import asyncio, json, time, os, sys
+import asyncio, json, time, os, sys, math
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -266,26 +266,19 @@ load_le()
 
 def load_math():
     global math_mgr
-    print(f"[MathOps-DEBUG] MATH_PATH: {MATH_PATH}")
-    print(f"[MathOps-DEBUG] File exists: {MATH_PATH.exists()}")
     if MATH_PATH.exists():
         try:
             data = json.loads(MATH_PATH.read_text())
-            print(f"[MathOps-DEBUG] Loaded data: {data}")
             math_file = MathOpFile.model_validate(data)
-            print(f"[MathOps-DEBUG] Validated, operators: {len(math_file.operators)}")
             math_mgr.load(math_file)
             log.info(f"[MathOps] Loaded {len(math_mgr.operators)} math operators")
-            print(f"[MathOps-DEBUG] Manager has {len(math_mgr.operators)} operators")
         except Exception as e:
             log.error(f"[MathOps] Failed to load: {e}")
-            print(f"[MathOps-DEBUG] Exception: {e}")
             import traceback
             traceback.print_exc()
             math_mgr = MathOpManager()
     else:
         log.info("[MathOps] No math_operators.json found, creating default")
-        print("[MathOps-DEBUG] Creating default empty file")
         MATH_PATH.write_text(json.dumps({"operators": []}, indent=2))
 
 load_math()
@@ -959,6 +952,81 @@ def set_ao(req: AOReq):
         mcc.set_ao(req.index, req.volts)
     
     return {"ok": True}
+
+@app.post("/api/zero_ai")
+async def zero_ai_channels(req: dict):
+    """Zero AI channels by averaging and adjusting offset"""
+    
+    channels = req.get("channels", [])
+    averaging_period = req.get("averaging_period", 1.0)
+    balance_to_value = req.get("balance_to_value", 0.0)  # Value to balance to (default: 0)
+    
+    if not channels:
+        return {"ok": False, "error": "No channels specified"}
+    
+    # Validate channels
+    for ch in channels:
+        if ch < 0 or ch >= len(app_cfg.analogs):
+            return {"ok": False, "error": f"Invalid channel index: {ch}"}
+    
+    # Collect samples from the acquisition loop
+    samples = {ch: [] for ch in channels}
+    start_time = time.time()
+    sample_count = 0
+    
+    # Wait and collect samples
+    while time.time() - start_time < averaging_period:
+        await asyncio.sleep(0.01)  # 10ms between checks
+        sample_count += 1
+        
+        # Read directly from hardware (scaled values)
+        try:
+            ai_raw = mcc.read_ai_all()
+            for ch in channels:
+                if ch < len(ai_raw):
+                    # Apply current scaling to get what the user sees
+                    cfg = app_cfg.analogs[ch]
+                    val = ai_raw[ch] * cfg.slope + cfg.offset
+                    if math.isfinite(val):
+                        samples[ch].append(val)
+        except Exception as e:
+            print(f"[Zero-AI] Sample error: {e}")
+            continue
+    
+    # Calculate averages and update offsets
+    offsets = []
+    for ch in channels:
+        if not samples[ch]:
+            return {"ok": False, "error": f"No valid samples for channel {ch}"}
+        
+        avg = sum(samples[ch]) / len(samples[ch])
+        old_offset = app_cfg.analogs[ch].offset
+        
+        # Calculate new offset: we want (raw * slope + new_offset) = balance_to_value
+        # Currently: (raw * slope + old_offset) = avg
+        # So: raw * slope = avg - old_offset
+        # We want: (avg - old_offset) + new_offset = balance_to_value
+        # Therefore: new_offset = balance_to_value - avg + old_offset
+        # Simplified: new_offset = old_offset - (avg - balance_to_value)
+        new_offset = old_offset - (avg - balance_to_value)
+        
+        # Update config
+        app_cfg.analogs[ch].offset = new_offset
+        
+        offsets.append({
+            "channel": ch,
+            "old": old_offset,
+            "new": new_offset,
+            "avg": avg,
+            "balance_to": balance_to_value,
+            "samples": len(samples[ch])
+        })
+    
+    # Save config to disk
+    CFG_PATH.write_text(json.dumps(app_cfg.model_dump(), indent=2))
+    print(f"[Zero-AI] Updated offsets for {len(channels)} channel(s)")
+    
+    return {"ok": True, "offsets": offsets}
 
 # ---------- REST: logs ----------
 @app.get("/api/logs")
