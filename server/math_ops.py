@@ -20,9 +20,19 @@ class MathOperator(BaseModel):
     name: str = ""
     operation: str = "add"  # Unary: sqr, sqrt, log10, ln, exp, sin, cos, tan, abs, neg, filter
                             # Binary: add, sub, mul, div, mod, pow, min, max
+                            # Conditional: if_gt, if_gte, if_lt, if_lte, if_eq, if_neq
     input_a: MathOpInput = MathOpInput()
-    input_b: Optional[MathOpInput] = None  # Only for binary operations
+    input_b: Optional[MathOpInput] = None  # For binary and conditional operations
+    # For IF operations:
+    output_true: Optional[MathOpInput] = None   # Value when condition is true
+    output_false: Optional[MathOpInput] = None  # Value when condition is false
     filter_hz: Optional[float] = None  # Cutoff frequency for 'filter' operation (Hz)
+    # For output to hardware:
+    has_output: bool = False              # True if this operator writes to AO/DO
+    output_type: Optional[str] = None     # 'ao' or 'do'
+    output_channel: Optional[int] = None  # Which AO/DO channel
+    output_min: Optional[float] = None    # Min clamp for AO
+    output_max: Optional[float] = None    # Max clamp for AO
 
 class MathOpFile(BaseModel):
     """Configuration file for math operators"""
@@ -31,9 +41,10 @@ class MathOpFile(BaseModel):
 class MathOpManager:
     """Manages evaluation of math operators"""
     
-    # Define which operations are unary vs binary
+    # Define which operations are unary vs binary vs conditional
     UNARY_OPS = {'sqr', 'sqrt', 'log10', 'ln', 'exp', 'sin', 'cos', 'tan', 'abs', 'neg', 'asin', 'acos', 'atan', 'filter'}
     BINARY_OPS = {'add', 'sub', 'mul', 'div', 'mod', 'pow', 'min', 'max', 'atan2'}
+    IF_OPS = {'if_gt', 'if_gte', 'if_lt', 'if_lte', 'if_eq', 'if_neq'}
     
     def __init__(self):
         self.operators: List[MathOperator] = []
@@ -94,7 +105,7 @@ class MathOpManager:
             print(f"[MathOps] Error getting input value: {e}")
             return 0.0
     
-    def evaluate_all(self, state: Dict) -> List[Dict]:
+    def evaluate_all(self, state: Dict, bridge=None) -> List[Dict]:
         """Evaluate all enabled operators and return telemetry"""
         telemetry = []
         
@@ -199,6 +210,34 @@ class MathOpManager:
                         elif op.operation == "atan2":
                             result = math.atan2(val_a, val_b)
                 
+                # Conditional (IF) operations
+                elif op.operation in self.IF_OPS:
+                    if op.input_b is None or op.output_true is None or op.output_false is None:
+                        result = 0.0
+                    else:
+                        val_b = self.get_input_value(op.input_b, state)
+                        
+                        # Evaluate condition
+                        condition = False
+                        if op.operation == "if_gt":
+                            condition = val_a > val_b
+                        elif op.operation == "if_gte":
+                            condition = val_a >= val_b
+                        elif op.operation == "if_lt":
+                            condition = val_a < val_b
+                        elif op.operation == "if_lte":
+                            condition = val_a <= val_b
+                        elif op.operation == "if_eq":
+                            condition = abs(val_a - val_b) < 1e-9  # Floating point equality
+                        elif op.operation == "if_neq":
+                            condition = abs(val_a - val_b) >= 1e-9
+                        
+                        # Get output based on condition
+                        if condition:
+                            result = self.get_input_value(op.output_true, state)
+                        else:
+                            result = self.get_input_value(op.output_false, state)
+                
                 else:
                     result = 0.0
                 
@@ -236,6 +275,42 @@ class MathOpManager:
                     "enabled": True,
                     "error": str(e)
                 })
+        
+        # Write outputs to hardware if configured
+        if bridge is not None:
+            for i, op in enumerate(self.operators):
+                # Skip if not enabled or no output configured
+                if not op.enabled:
+                    continue
+                if not getattr(op, 'has_output', False):
+                    continue
+                if not getattr(op, 'output_type', None):
+                    continue
+                if getattr(op, 'output_channel', None) is None:
+                    continue
+                
+                result = self.outputs[i]
+                
+                try:
+                    if op.output_type == "ao":
+                        # Clamp to min/max
+                        if op.output_min is not None:
+                            result = max(op.output_min, result)
+                        if op.output_max is not None:
+                            result = min(op.output_max, result)
+                        
+                        # Write to AO
+                        bridge.set_ao(op.output_channel, result)
+                    
+                    elif op.output_type == "do":
+                        # Convert to boolean: >= 1 is ON
+                        do_state = result >= 1.0
+                        bridge.set_do(op.output_channel, do_state, active_high=True)
+                
+                except Exception as e:
+                    print(f"[MathOps] Error writing output for {op.name}: {e}")
+                    import traceback
+                    traceback.print_exc()
         
         # Update timestamp for next iteration
         import time

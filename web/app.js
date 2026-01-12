@@ -927,6 +927,9 @@ function addWidget(type){
   let defaultW = 460, defaultH = 280;
   if (type === 'gauge') {
     defaultH = 340;
+  } else if (type === 'bars') {
+    defaultW = 200;  // Narrower bars
+    defaultH = 280;
   } else if (type === 'dobutton') {
     defaultW = 120;
     defaultH = 45;  // Reduced from 90
@@ -1685,6 +1688,7 @@ function renderWidget(w){
   if (w.type === 'le') classList += ' le-widget';
   if (w.type === 'mathop') classList += ' mathop-widget';
   if (w.type === 'pidpanel') classList += ' pidpanel-widget';
+  if (w.type === 'bars') classList += ' bars-widget';
   const box=el('div',{className:classList, id:'w_'+w.id});
   
   // LE and mathop widgets get minimal headers (via CSS)
@@ -2580,7 +2584,7 @@ function mountBars(w, body){
 
     const series = w.opts.series || [];
     const N = Math.max(1, series.length);
-    const barW = Math.max(10, (plotR - plotL) / N - 10);
+    const barW = Math.max(5, (plotR - plotL) / N - 20); // Reduced width: min 5px, more spacing
 
     // Draw bars
     ctx.font = '10px system-ui, sans-serif';
@@ -3585,7 +3589,7 @@ function makeDragResize(node, w, header, handle){
   let dragging=false,resizing=false,sx=0,sy=0,ox=0,oy=0,ow=0,oh=0;
   
   // Set minimum sizes based on widget type
-  let minW = 280;
+  let minW = 100;
   if (w.type === 'dobutton') minW = 70;
   else if (w.type === 'le' || w.type === 'mathop') minW = 140;  // 50% of default 280
   else if (w.type === 'pidpanel') minW = 168;  // 60% of default 280
@@ -3867,7 +3871,8 @@ async function openPidForm(){
         name: `Loop${loops.length}`,
         enable_gate: false,
         enable_kind: 'do',
-        enable_index: 0
+        enable_index: 0,
+        execution_rate_hz: null  // null = sample rate
       });
       // Rebuild the form
       buildForm();
@@ -3899,6 +3904,7 @@ async function openPidForm(){
       el('th', {}, 'Err Max'),
       el('th', {}, 'I Min'),
       el('th', {}, 'I Max'),
+      el('th', {}, 'Exec Hz'),
       el('th', {}, 'En Gate'),
       el('th', {}, 'Gate Type'),
       el('th', {}, 'Gate #'),
@@ -3936,6 +3942,7 @@ async function openPidForm(){
         el('td', {}, num(L, 'err_max', 0.0001)),
         el('td', {}, num(L, 'i_min', 0.0001)),
         el('td', {}, num(L, 'i_max', 0.0001)),
+        el('td', {}, num(L, 'execution_rate_hz', 1)),
         el('td', {}, chk(L, 'enable_gate')),
         el('td', {}, selectEnum(['do','le'], L.enable_kind||'do', v=>L.enable_kind=v)),
         el('td', {}, num(L, 'enable_index', 1)),
@@ -4510,13 +4517,25 @@ async function openMathEditor(){
       const opSelect = el('select', {
         onchange: e => {
           op.operation = e.target.value;
-          // Binary ops need input_b, unary don't
           const binary = ['add','sub','mul','div','mod','pow','min','max','atan2'];
-          if (binary.includes(e.target.value)) {
+          const conditional = ['if_gt','if_gte','if_lt','if_lte','if_eq','if_neq'];
+          
+          // Binary and conditional ops need input_b
+          if (binary.includes(e.target.value) || conditional.includes(e.target.value)) {
             if (!op.input_b) op.input_b = {kind: 'ai', index: 1};
           } else {
             delete op.input_b;
           }
+          
+          // Conditional ops need output_true and output_false
+          if (conditional.includes(e.target.value)) {
+            if (!op.output_true) op.output_true = {kind: 'value', index: 0, value: 1.0};
+            if (!op.output_false) op.output_false = {kind: 'value', index: 0, value: 0.0};
+          } else {
+            delete op.output_true;
+            delete op.output_false;
+          }
+          
           renderMathEditor();
         },
         style: 'font-size:14px; padding:6px 12px'
@@ -4524,7 +4543,8 @@ async function openMathEditor(){
       
       const opGroups = {
         'Unary': ['sqr','sqrt','log10','ln','exp','sin','cos','tan','asin','acos','atan','abs','neg','filter'],
-        'Binary': ['add','sub','mul','div','mod','pow','min','max','atan2']
+        'Binary': ['add','sub','mul','div','mod','pow','min','max','atan2'],
+        'Conditional': ['if_gt','if_gte','if_lt','if_lte','if_eq','if_neq']
       };
       Object.entries(opGroups).forEach(([group, ops]) => {
         const optgroup = el('optgroup', {label: group});
@@ -4556,14 +4576,105 @@ async function openMathEditor(){
       inputASection.append(createMathInputEditor(op.input_a));
       card.append(inputASection);
 
-      // Input B (only for binary ops)
+      // Input B (only for binary and conditional ops)
       const binary = ['add','sub','mul','div','mod','pow','min','max','atan2'];
-      if (binary.includes(op.operation)) {
-        const inputBSection = el('div', {style: 'border:1px solid #2a3046; padding:8px; border-radius:6px'});
-        inputBSection.append(el('h4', {style: 'margin:0 0 8px 0; color:#a8b3cf'}, 'Input B'));
+      const conditional = ['if_gt','if_gte','if_lt','if_lte','if_eq','if_neq'];
+      
+      if (binary.includes(op.operation) || conditional.includes(op.operation)) {
+        const inputBSection = el('div', {style: 'border:1px solid #2a3046; padding:8px; border-radius:6px; margin-bottom:8px'});
+        inputBSection.append(el('h4', {style: 'margin:0 0 8px 0; color:#a8b3cf'}, conditional.includes(op.operation) ? 'Compare To' : 'Input B'));
         inputBSection.append(createMathInputEditor(op.input_b));
         card.append(inputBSection);
       }
+      
+      // IF outputs (only for conditional ops)
+      if (conditional.includes(op.operation)) {
+        const ifOutputsSection = el('div', {style: 'border:1px solid #2a3046; padding:8px; border-radius:6px; margin-bottom:8px'});
+        ifOutputsSection.append(el('h4', {style: 'margin:0 0 8px 0; color:#a8b3cf'}, 'Outputs'));
+        
+        const trueRow = el('div', {style: 'margin-bottom:8px'});
+        trueRow.append(el('label', {style: 'display:block;margin-bottom:4px;color:#7aa2f7'}, 'If TRUE:'));
+        if (!op.output_true) op.output_true = {kind: 'value', index: 0, value: 1.0};
+        trueRow.append(createMathInputEditor(op.output_true));
+        
+        const falseRow = el('div', {});
+        falseRow.append(el('label', {style: 'display:block;margin-bottom:4px;color:#f7768e'}, 'If FALSE:'));
+        if (!op.output_false) op.output_false = {kind: 'value', index: 0, value: 0.0};
+        falseRow.append(createMathInputEditor(op.output_false));
+        
+        ifOutputsSection.append(trueRow, falseRow);
+        card.append(ifOutputsSection);
+      }
+      
+      // Hardware Output Configuration
+      const outputSection = el('div', {style: 'border:1px solid #2a3046; padding:8px; border-radius:6px; margin-bottom:8px'});
+      outputSection.append(el('h4', {style: 'margin:0 0 8px 0; color:#a8b3cf'}, 'Hardware Output (Optional)'));
+      
+      const hasOutputChk = el('input', {
+        type: 'checkbox',
+        checked: op.has_output || false,
+        onchange: e => {
+          op.has_output = e.target.checked;
+          outputConfigDiv.style.display = e.target.checked ? 'block' : 'none';
+        }
+      });
+      
+      const outputConfigDiv = el('div', {style: 'display:' + (op.has_output ? 'block' : 'none') + ';margin-top:8px'});
+      
+      const outputTypeSelect = el('select', {
+        onchange: e => {
+          op.output_type = e.target.value;
+          clampDiv.style.display = e.target.value === 'ao' ? 'block' : 'none';
+        },
+        style: 'width:80px;margin-left:8px'
+      });
+      outputTypeSelect.append(el('option', {value: 'ao'}, 'AO'));
+      outputTypeSelect.append(el('option', {value: 'do'}, 'DO'));
+      outputTypeSelect.value = op.output_type || 'ao';
+      
+      const outputChInput = el('input', {
+        type: 'number',
+        min: 0,
+        step: 1,
+        value: op.output_channel ?? 0,
+        oninput: e => op.output_channel = parseInt(e.target.value) || 0,
+        style: 'width:60px;margin-left:8px'
+      });
+      
+      const clampDiv = el('div', {style: 'display:' + (op.output_type === 'ao' ? 'block' : 'none') + ';margin-top:8px'});
+      const minInput = el('input', {
+        type: 'number',
+        step: 'any',
+        value: op.output_min ?? -10.0,
+        oninput: e => op.output_min = parseFloat(e.target.value),
+        style: 'width:80px;margin-left:8px'
+      });
+      const maxInput = el('input', {
+        type: 'number',
+        step: 'any',
+        value: op.output_max ?? 10.0,
+        oninput: e => op.output_max = parseFloat(e.target.value),
+        style: 'width:80px;margin-left:8px'
+      });
+      
+      clampDiv.append(
+        el('label', {}, ['Min: ', minInput]),
+        el('label', {style: 'margin-left:12px'}, ['Max: ', maxInput])
+      );
+      
+      outputConfigDiv.append(
+        el('div', {className: 'row', style: 'margin-bottom:8px'}, [
+          el('label', {}, ['Type: ', outputTypeSelect]),
+          el('label', {style: 'margin-left:12px'}, ['Channel: ', outputChInput])
+        ]),
+        clampDiv
+      );
+      
+      outputSection.append(
+        el('label', {}, [hasOutputChk, ' Write result to AO/DO']),
+        outputConfigDiv
+      );
+      card.append(outputSection);
 
       container.append(card);
     });
@@ -4594,7 +4705,7 @@ async function openMathEditor(){
       },
       style: 'flex:1'
     });
-    ['ai', 'ao', 'tc', 'pid_u', 'math', 'value'].forEach(k => {
+    ['ai', 'ao', 'tc', 'pid_u', 'math', 'le', 'value'].forEach(k => {
       kindSelect.append(el('option', {value: k}, k.toUpperCase()));
     });
     kindSelect.value = input.kind || 'ai';

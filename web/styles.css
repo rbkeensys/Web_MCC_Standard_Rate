@@ -36,6 +36,7 @@ body.fullscreen #exitFullscreenBtn { display: block; }
 .widget.dobutton-widget { min-width:70px; min-height:45px; }
 .widget.le-widget, .widget.mathop-widget { min-height:10px; min-width:140px; }
 .widget.pidpanel-widget { min-width:168px; }
+.widget.bars-widget { min-width:100px; } /* Allow very narrow bars */
 .widget header { display:flex; align-items:flex-start; gap:8px; padding:8px; cursor:grab; }
 .widget.le-widget header, .widget.mathop-widget header { padding:2px 4px; min-height:14px; font-size:9px; }
 .widget header .title { font-weight:600; }
@@ -69,9 +70,9 @@ hr.soft { border:0; border-top:1px solid #1f2330; margin:6px 0; }
 fieldset { border:1px solid #2a3046; border-radius:10px; padding:10px; margin-bottom:10px; }
 table.form { width:100%; border-collapse:collapse; }
 table.form th, table.form td { border-bottom:1px solid #252a3f; padding:6px; text-align:left; }
-table.form th { color:#a8b3cf; font-weight:600; }
-table.form input, table.form select { width:90px; max-width:200px; font-size:12px; padding:4px 6px; }
-table.form input[type="text"] { width:120px; }
+table.form th { color:#a8b3cf; font-weight:600; white-space:nowrap; }
+table.form input, table.form select { width:100%; max-width:200px; min-width:60px; font-size:12px; padding:4px 6px; box-sizing:border-box; }
+table.form input[type="text"] { max-width:200px; }
 table.form input[type="checkbox"] { width:auto; }
 .compact .form input, .compact .form select { font-size:11px; padding:2px 4px; width:55%; }
 .compact .form th { font-size:11px; padding:4px; }

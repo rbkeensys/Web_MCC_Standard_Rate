@@ -23,12 +23,15 @@ class LoopDef:
     enable_gate: bool = False      # Whether to gate this PID with a DO/LE
     enable_kind: str = "do"        # 'do' or 'le'
     enable_index: int = 0          # Which DO/LE to use as enable
+    execution_rate_hz: Optional[float] = None  # None = run at sample rate
 
 class _PID:
     def __init__(self, d: LoopDef):
         self.d = d
         self.i = 0.0
         self.prev = None
+        self.tick_counter = 0  # For execution rate decimation
+        self.last_u = 0.0      # Last output value (for decimated execution)
 
     def step(self, pv: float, dt: float):
         e = self.d.target - pv
@@ -83,15 +86,16 @@ class PIDManager:
         self.meta = new_meta
         self.last_gate_states = new_gate_states
 
-    def step(self, ai_vals: List[float], tc_vals: List[float], bridge, do_state=None, le_state=None, pid_prev=None, math_outputs=None) -> List[Dict]:
+    def step(self, ai_vals: List[float], tc_vals: List[float], bridge, do_state=None, le_state=None, pid_prev=None, math_outputs=None, sample_rate_hz=100.0) -> List[Dict]:
         import time
-        dt = 1.0  # approximate; the outer loop is rate-controlled
+        dt = 1.0 / max(1.0, sample_rate_hz)  # Time step in seconds
         tel = []
         for i, (p, d) in enumerate(zip(self.loops, self.meta)):
             if not d.enabled:
                 # PID disabled via checkbox - reset state and force outputs to safe state
                 p.i = 0.0
                 p.prev = None
+                p.tick_counter = 0
                 
                 # Force outputs to safe state based on kind
                 if d.kind == "digital":
@@ -131,6 +135,7 @@ class PIDManager:
                         if not gate_enabled:
                             p.i = 0.0
                             p.prev = None
+                            p.tick_counter = 0
                             print(f"[PID-GATE] Loop '{d.name}': State reset (i=0, prev=None)")
                             
                             # Force outputs to safe state
@@ -144,6 +149,32 @@ class PIDManager:
             # If gated, don't calculate - return zeros immediately
             if not gate_enabled:
                 tel.append({"name": d.name, "pv": 0.0, "u": 0.0, "out": 0.0, "err": 0.0, "enabled": True, "gated": True})
+                continue
+            
+            # Check if this PID should execute this cycle (decimation)
+            should_execute = True
+            if d.execution_rate_hz is not None and d.execution_rate_hz > 0:
+                # Calculate decimation factor
+                decimate = max(1, int(round(sample_rate_hz / d.execution_rate_hz)))
+                p.tick_counter += 1
+                should_execute = (p.tick_counter >= decimate)
+                if should_execute:
+                    p.tick_counter = 0
+                    # Use accumulated dt for this execution
+                    dt = decimate / sample_rate_hz
+            
+            # If not executing this cycle, use last output
+            if not should_execute:
+                tel.append({
+                    "name": d.name, 
+                    "pv": 0.0,  # Could read current PV but not necessary
+                    "u": p.last_u, 
+                    "out": p.last_u, 
+                    "err": 0.0, 
+                    "enabled": True, 
+                    "gated": False,
+                    "skipped": True
+                })
                 continue
             
             # Gate enabled - calculate PID normally
@@ -166,6 +197,9 @@ class PIDManager:
                     if d.ai_ch < len(math_outputs):
                         pv = math_outputs[d.ai_ch]
                 u, err, p_term, i_term, d_term = p.step(pv, dt)
+                
+                # Store last output
+                p.last_u = u
                 
                 # Calculate output value
                 if d.kind == "digital":

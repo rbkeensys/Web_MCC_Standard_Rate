@@ -1,6 +1,6 @@
 # server/server.py
 # Python 3.10+
-import asyncio, json, time, os, sys, math
+import asyncio, json, time, os, sys
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -20,8 +20,8 @@ from motor_controller import MotorManager, list_serial_ports
 from logic_elements import LEManager
 from math_ops import MathOpManager, MathOpFile
 from app_models import LEFile, LogicElementCfg
-import logging, os
-SERVER_VERSION = "0.9.10"  # Fixed NaN to None conversion for TC and math telemetry
+import logging, os, math
+SERVER_VERSION = "0.9.11"  # Added PID execution rate, IF statements, Math outputs
 
 
 MCC_TICK_LOG = os.environ.get("MCC_TICK_LOG", "1") == "1"  # print 1 line per second
@@ -243,10 +243,6 @@ motor_mgr = MotorManager()
 # Logic Elements
 le_mgr = LEManager()
 LE_PATH = CFG_DIR / "logic_elements.json"
-MATH_PATH = CFG_DIR / "math_operators.json"
-
-# Math Operators
-math_mgr = MathOpManager()
 
 def load_le():
     global le_mgr
@@ -263,6 +259,10 @@ def load_le():
         LE_PATH.write_text(json.dumps({"elements": []}, indent=2))
 
 load_le()
+
+# Math Operators
+math_mgr = MathOpManager()
+MATH_PATH = CFG_DIR / "math_operators.json"
 
 def load_math():
     global math_mgr
@@ -315,16 +315,29 @@ def _on_shutdown():
     print("[MCC-Hub] Motors disconnected")
 
 async def broadcast(msg: dict):
-    txt = json.dumps(msg, separators=(",", ":"))  # pre-encode once
+    try:
+        txt = json.dumps(msg, separators=(",", ":"))  # pre-encode once
+    except Exception as e:
+        print(f"[WS] JSON serialization failed: {e}")
+        print(f"[WS] Message type: {msg.get('type')}")
+        import traceback
+        traceback.print_exc()
+        return
+    
     living = []
+    sent_count = 0
     for ws in ws_clients:
         try:
             await ws.send_text(txt)
             living.append(ws)
-        except Exception:
-            # don't spam; just drop dead client
+            sent_count += 1
+        except Exception as e:
+            # Client disconnected
+            print(f"[WS] Client send failed: {e}")
             pass
     ws_clients[:] = living
+    if sent_count == 0 and len(ws_clients) > 0:
+        print(f"[WS] WARNING: Had {len(ws_clients)} clients but sent to 0!")
 
 async def acq_loop():
     """
@@ -400,6 +413,7 @@ async def acq_loop():
     
     # PID telemetry from previous cycle (for cascade control)
     last_pid_telemetry: List[Dict] = []
+    math_tel: List[Dict] = []  # Math telemetry for current cycle
 
     try:
         while True:
@@ -488,10 +502,10 @@ async def acq_loop():
                 "tc": tc_vals,
                 "pid": [],  # PIDs haven't run yet
                 "le": le_outputs
-            })
+            }, bridge=mcc)
 
             # --- PIDs (may drive DO/AO) ---
-            # Pass DO/LE state so PIDs can check their enable gates
+            # Pass DO/LE state so PIDs can use their enable gates
             # Pass previous cycle's PID telemetry for cascade control (pid source)
             # Pass math outputs so PIDs can use math as source
             telemetry = pid_mgr.step(
@@ -501,7 +515,8 @@ async def acq_loop():
                 do_state=do,
                 le_state=le_tel,
                 pid_prev=last_pid_telemetry,
-                math_outputs=[m.get("output", 0.0) for m in math_tel]
+                math_outputs=[m.get("output", 0.0) for m in math_tel],
+                sample_rate_hz=acq_rate_hz
             )
             
             # Store for next cycle
@@ -609,34 +624,27 @@ async def acq_loop():
                         "error": str(e)
                     })
 
-            # Convert NaN to None for JSON serialization
-            # (Python's json.dumps doesn't support NaN)
-            import math
-            tc_vals_json = [None if not math.isfinite(v) else v for v in tc_vals]
-            
-            # Also convert NaN in math telemetry
-            math_tel_json = []
-            for m in math_tel:
-                m_clean = m.copy()
-                if 'input_a' in m_clean and not math.isfinite(m_clean['input_a']):
-                    m_clean['input_a'] = None
-                if 'input_b' in m_clean and m_clean['input_b'] is not None and not math.isfinite(m_clean['input_b']):
-                    m_clean['input_b'] = None
-                if 'output' in m_clean and not math.isfinite(m_clean['output']):
-                    m_clean['output'] = None
-                math_tel_json.append(m_clean)
+            # Convert NaN/Infinity to None for JSON serialization
+            def clean_for_json(obj):
+                if isinstance(obj, float):
+                    return None if not math.isfinite(obj) else obj
+                elif isinstance(obj, list):
+                    return [clean_for_json(item) for item in obj]
+                elif isinstance(obj, dict):
+                    return {k: clean_for_json(v) for k, v in obj.items()}
+                return obj
 
             frame = {
                 "type": "tick",
                 "t": time.time(),
-                "ai": ai_scaled,
-                "ao": ao,
+                "ai": clean_for_json(ai_scaled),
+                "ao": clean_for_json(ao),
                 "do": do,
-                "tc": tc_vals_json,
-                "pid": telemetry,
-                "motors": motor_status,
-                "le": le_tel,
-                "math": math_tel_json,
+                "tc": clean_for_json(tc_vals),
+                "pid": clean_for_json(telemetry),
+                "motors": clean_for_json(motor_status),
+                "le": clean_for_json(le_tel),
+                "math": clean_for_json(math_tel),
             }
 
             ticks += 1
@@ -659,6 +667,8 @@ async def acq_loop():
             effective_bcast_every = max(env_bcast_every, auto_bcast_every)
 
             if bcast_ctr >= effective_bcast_every:
+                if ticks <= 5:
+                    print(f"[DBG] Broadcasting tick {ticks}, clients={len(ws_clients)}")
                 await broadcast(frame)
                 bcast_ctr = 0
 
@@ -723,6 +733,18 @@ def put_pid(body: dict):
     print("[MCC-Hub] PID file updated")
     return {"ok": True}
 
+@app.get("/api/math_operators")
+def get_math_operators():
+    return _load_json_model(MATH_PATH, MathOpFile).model_dump()
+
+@app.put("/api/math_operators")
+def put_math_operators(body: dict):
+    global math_mgr
+    math_file = MathOpFile.model_validate(body)
+    MATH_PATH.write_text(json.dumps(math_file.model_dump(), indent=2))
+    load_math()
+    return {"ok": True}
+
 @app.get("/api/script")
 def get_script():
     return _load_json_model(SCRIPT_PATH, ScriptFile).model_dump()
@@ -781,26 +803,6 @@ def put_logic_elements(data: LEFile):
     try:
         LE_PATH.write_text(json.dumps(data.dict(), indent=2))
         load_le()
-        return {"ok": True}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-@app.get("/api/math_operators")
-def get_math_operators():
-    """Get math operator configuration"""
-    if MATH_PATH.exists():
-        try:
-            return json.loads(MATH_PATH.read_text())
-        except:
-            pass
-    return {"operators": []}
-
-@app.put("/api/math_operators")
-def put_math_operators(data: MathOpFile):
-    """Update math operator configuration"""
-    try:
-        MATH_PATH.write_text(json.dumps(data.model_dump(), indent=2))
-        load_math()
         return {"ok": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -889,7 +891,7 @@ def set_do(req: DOReq):
     # Check if this DO is gated by a logic element
     try:
         cfg = mcc.cfg
-        if idx < len(cfg.digitalOutputs):
+        if cfg is not None and idx < len(cfg.digitalOutputs):
             do_cfg = cfg.digitalOutputs[idx]
             le_index = getattr(do_cfg, "logicElement", None)
             
@@ -955,11 +957,10 @@ def set_ao(req: AOReq):
 
 @app.post("/api/zero_ai")
 async def zero_ai_channels(req: dict):
-    """Zero AI channels by averaging and adjusting offset"""
-    
+    """Zero/balance AI channels by averaging and adjusting offsets"""
     channels = req.get("channels", [])
     averaging_period = req.get("averaging_period", 1.0)
-    balance_to_value = req.get("balance_to_value", 0.0)  # Value to balance to (default: 0)
+    balance_to_value = req.get("balance_to_value", 0.0)
     
     if not channels:
         return {"ok": False, "error": "No channels specified"}
@@ -969,32 +970,27 @@ async def zero_ai_channels(req: dict):
         if ch < 0 or ch >= len(app_cfg.analogs):
             return {"ok": False, "error": f"Invalid channel index: {ch}"}
     
-    # Collect samples from the acquisition loop
+    # Collect samples at 100Hz for averaging_period
+    sample_rate = 100.0  # Hz
+    num_samples = int(averaging_period * sample_rate)
     samples = {ch: [] for ch in channels}
-    start_time = time.time()
-    sample_count = 0
     
-    # Wait and collect samples
-    while time.time() - start_time < averaging_period:
-        await asyncio.sleep(0.01)  # 10ms between checks
-        sample_count += 1
+    print(f"[Zero AI] Collecting {num_samples} samples for channels {channels}...")
+    
+    for _ in range(num_samples):
+        ai_raw = mcc.read_ai_all()
         
-        # Read directly from hardware (scaled values)
-        try:
-            ai_raw = mcc.read_ai_all()
-            for ch in channels:
-                if ch < len(ai_raw):
-                    # Apply current scaling to get what the user sees
-                    cfg = app_cfg.analogs[ch]
-                    val = ai_raw[ch] * cfg.slope + cfg.offset
-                    if math.isfinite(val):
-                        samples[ch].append(val)
-        except Exception as e:
-            print(f"[Zero-AI] Sample error: {e}")
-            continue
+        for ch in channels:
+            if ch < len(ai_raw):
+                # Apply current slope and offset to get scaled value
+                cfg = app_cfg.analogs[ch]
+                scaled = cfg.slope * ai_raw[ch] + cfg.offset
+                samples[ch].append(scaled)
+        
+        await asyncio.sleep(1.0 / sample_rate)
     
-    # Calculate averages and update offsets
-    offsets = []
+    # Calculate averages and new offsets
+    offsets = {}
     for ch in channels:
         if not samples[ch]:
             return {"ok": False, "error": f"No valid samples for channel {ch}"}
@@ -1002,29 +998,21 @@ async def zero_ai_channels(req: dict):
         avg = sum(samples[ch]) / len(samples[ch])
         old_offset = app_cfg.analogs[ch].offset
         
-        # Calculate new offset: we want (raw * slope + new_offset) = balance_to_value
-        # Currently: (raw * slope + old_offset) = avg
-        # So: raw * slope = avg - old_offset
-        # We want: (avg - old_offset) + new_offset = balance_to_value
-        # Therefore: new_offset = balance_to_value - avg + old_offset
-        # Simplified: new_offset = old_offset - (avg - balance_to_value)
+        # New offset = old_offset - (average - balance_to_value)
         new_offset = old_offset - (avg - balance_to_value)
         
-        # Update config
         app_cfg.analogs[ch].offset = new_offset
+        offsets[ch] = {
+            "old_offset": old_offset,
+            "new_offset": new_offset,
+            "average": avg,
+            "balance_to": balance_to_value
+        }
         
-        offsets.append({
-            "channel": ch,
-            "old": old_offset,
-            "new": new_offset,
-            "avg": avg,
-            "balance_to": balance_to_value,
-            "samples": len(samples[ch])
-        })
+        print(f"[Zero AI] CH{ch}: avg={avg:.6f}, old_offset={old_offset:.6f}, new_offset={new_offset:.6f}")
     
-    # Save config to disk
+    # Save config
     CFG_PATH.write_text(json.dumps(app_cfg.model_dump(), indent=2))
-    print(f"[Zero-AI] Updated offsets for {len(channels)} channel(s)")
     
     return {"ok": True, "offsets": offsets}
 

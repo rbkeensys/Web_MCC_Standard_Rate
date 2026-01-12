@@ -75,6 +75,7 @@ class PIDRec(BaseModel):
     enable_gate: bool = False
     enable_kind: str = "do"
     enable_index: int = 0
+    execution_rate_hz: Optional[float] = None  # None = run at sample rate
 
 class PIDFile(BaseModel):
     loops: List[PIDRec] = []

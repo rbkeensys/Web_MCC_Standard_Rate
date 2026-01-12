@@ -3,23 +3,24 @@
     {
       "enabled": true,
       "kind": "analog",
-      "src": "ai",
-      "ai_ch": 2,
+      "src": "math",
+      "ai_ch": 3,
       "out_ch": 1,
-      "target": 150.0,
-      "kp": 0.2,
-      "ki": 0.001,
-      "kd": 2.0,
+      "target": 0.13,
+      "kp": 15.0,
+      "ki": 3.0,
+      "kd": 0.0,
       "out_min": 0.3,
-      "out_max": 1.2,
+      "out_max": 3.0,
       "err_min": -1.5,
       "err_max": 1.5,
-      "i_min": -0.5,
-      "i_max": 0.5,
+      "i_min": -1.0,
+      "i_max": 1.0,
       "name": "Motor CMD",
       "enable_gate": true,
       "enable_kind": "le",
-      "enable_index": 0
+      "enable_index": 0,
+      "execution_rate_hz": null
     },
     {
       "enabled": true,
@@ -40,7 +41,8 @@
       "name": "rpm conv.",
       "enable_gate": false,
       "enable_kind": "do",
-      "enable_index": 0
+      "enable_index": 0,
+      "execution_rate_hz": null
     },
     {
       "enabled": true,
@@ -61,7 +63,8 @@
       "name": "Heater",
       "enable_gate": true,
       "enable_kind": "le",
-      "enable_index": 2
+      "enable_index": 2,
+      "execution_rate_hz": null
     }
   ]
 }
