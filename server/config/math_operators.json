@@ -1,0 +1,207 @@
+{
+  "operators": [
+    {
+      "enabled": true,
+      "name": "rpm conv",
+      "operation": "mul",
+      "input_a": {
+        "kind": "ao",
+        "index": 1,
+        "value": null
+      },
+      "input_b": {
+        "kind": "value",
+        "index": 1,
+        "value": 300.0
+      },
+      "output_true": null,
+      "output_false": null,
+      "filter_hz": null,
+      "has_output": false,
+      "output_type": null,
+      "output_channel": null,
+      "output_min": null,
+      "output_max": null
+    },
+    {
+      "enabled": true,
+      "name": "DP Flow Subtract",
+      "operation": "sub",
+      "input_a": {
+        "kind": "ai",
+        "index": 0,
+        "value": null
+      },
+      "input_b": {
+        "kind": "ai",
+        "index": 1,
+        "value": null
+      },
+      "output_true": null,
+      "output_false": null,
+      "filter_hz": null,
+      "has_output": false,
+      "output_type": null,
+      "output_channel": null,
+      "output_min": null,
+      "output_max": null
+    },
+    {
+      "enabled": true,
+      "name": "sqrt DP Flow",
+      "operation": "sqrt",
+      "input_a": {
+        "kind": "math",
+        "index": 1,
+        "value": null
+      },
+      "input_b": null,
+      "output_true": null,
+      "output_false": null,
+      "filter_hz": null,
+      "has_output": false,
+      "output_type": null,
+      "output_channel": null,
+      "output_min": null,
+      "output_max": null
+    },
+    {
+      "enabled": true,
+      "name": "Q Calc gpm",
+      "operation": "mul",
+      "input_a": {
+        "kind": "math",
+        "index": 2,
+        "value": null
+      },
+      "input_b": {
+        "kind": "value",
+        "index": 1,
+        "value": 0.056
+      },
+      "output_true": null,
+      "output_false": null,
+      "filter_hz": null,
+      "has_output": false,
+      "output_type": null,
+      "output_channel": null,
+      "output_min": null,
+      "output_max": null
+    },
+    {
+      "enabled": true,
+      "name": "Filtered Q",
+      "operation": "filter",
+      "input_a": {
+        "kind": "math",
+        "index": 3,
+        "value": null
+      },
+      "input_b": null,
+      "output_true": null,
+      "output_false": null,
+      "filter_hz": 0.3,
+      "has_output": false,
+      "output_type": null,
+      "output_channel": null,
+      "output_min": null,
+      "output_max": null
+    },
+    {
+      "enabled": true,
+      "name": "Level subtract",
+      "operation": "sub",
+      "input_a": {
+        "kind": "ai",
+        "index": 2,
+        "value": null
+      },
+      "input_b": {
+        "kind": "ai",
+        "index": 3,
+        "value": null
+      },
+      "output_true": null,
+      "output_false": null,
+      "filter_hz": null,
+      "has_output": false,
+      "output_type": null,
+      "output_channel": null,
+      "output_min": null,
+      "output_max": null
+    },
+    {
+      "enabled": true,
+      "name": "Level Conv",
+      "operation": "mul",
+      "input_a": {
+        "kind": "math",
+        "index": 5,
+        "value": null
+      },
+      "input_b": {
+        "kind": "value",
+        "index": 1,
+        "value": 31.82
+      },
+      "output_true": null,
+      "output_false": null,
+      "filter_hz": null,
+      "has_output": false,
+      "output_type": null,
+      "output_channel": null,
+      "output_min": null,
+      "output_max": null
+    },
+    {
+      "enabled": true,
+      "name": "Filtered Level",
+      "operation": "filter",
+      "input_a": {
+        "kind": "math",
+        "index": 6,
+        "value": null
+      },
+      "input_b": null,
+      "output_true": null,
+      "output_false": null,
+      "filter_hz": 0.1,
+      "has_output": false,
+      "output_type": null,
+      "output_channel": null,
+      "output_min": null,
+      "output_max": null
+    },
+    {
+      "enabled": true,
+      "name": "Level Low",
+      "operation": "if_lt",
+      "input_a": {
+        "kind": "math",
+        "index": 7,
+        "value": null
+      },
+      "input_b": {
+        "kind": "value",
+        "index": 1,
+        "value": 40.0
+      },
+      "output_true": {
+        "kind": "value",
+        "index": 0,
+        "value": 1.0
+      },
+      "output_false": {
+        "kind": "value",
+        "index": 0,
+        "value": 0.0
+      },
+      "filter_hz": null,
+      "has_output": false,
+      "output_type": null,
+      "output_channel": null,
+      "output_min": null,
+      "output_max": null
+    }
+  ]
+}
