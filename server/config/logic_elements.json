@@ -2,7 +2,7 @@
   "elements": [
     {
       "enabled": true,
-      "name": "0: Motor Control",
+      "name": "0: Motor, Max P, Button",
       "inputs": [
         {
           "kind": "do",
@@ -28,7 +28,7 @@
         "index": 0,
         "comparison": "lt",
         "compare_to_type": "value",
-        "compare_value": 165.0,
+        "compare_value": 160.0,
         "compare_to_kind": "ao",
         "compare_to_index": null
       },
@@ -162,11 +162,11 @@
         "compare_to_index": null
       },
       "input_b": {
-        "kind": "math",
-        "index": 9,
-        "comparison": "gt",
-        "compare_to_type": "value",
-        "compare_value": 0.0,
+        "kind": "le",
+        "index": 0,
+        "comparison": null,
+        "compare_to_type": null,
+        "compare_value": null,
         "compare_to_kind": null,
         "compare_to_index": null
       },

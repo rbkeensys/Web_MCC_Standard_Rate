@@ -485,11 +485,12 @@ async def acq_loop():
 
             # --- Math Operators ---
             # Evaluate first so LEs can use math outputs
+            # Use previous cycle's PID data (avoids circular dependency)
             math_tel = math_mgr.evaluate_all({
                 "ai": ai_scaled,
                 "ao": ao,
                 "tc": tc_vals,
-                "pid": [],  # PIDs haven't run yet
+                "pid": last_pid_telemetry,  # Previous cycle PID data
                 "le": []    # LEs haven't been evaluated with math yet
             }, bridge=mcc)
 

@@ -162,7 +162,7 @@ class LEManager:
                     # Get PID output value
                     pid_vals = state.get("pid", [])
                     if inp.index < len(pid_vals):
-                        val = pid_vals[inp.index].get("u", 0.0)
+                        val = pid_vals[inp.index].get("out", 0.0)  # Use "out" (clamped) not "u" (raw)
                     else:
                         val = 0.0
                     vals = [val]  # Wrap in list for consistent handling
@@ -193,7 +193,7 @@ class LEManager:
                     elif inp.compare_to_kind == "pid_u":
                         pid_vals = state.get("pid", [])
                         if inp.compare_to_index < len(pid_vals):
-                            compare_val = pid_vals[inp.compare_to_index].get("u", 0.0)
+                            compare_val = pid_vals[inp.compare_to_index].get("out", 0.0)  # Use "out" not "u"
                         else:
                             compare_val = 0.0
                         cvals = [compare_val]

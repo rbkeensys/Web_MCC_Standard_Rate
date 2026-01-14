@@ -61,12 +61,20 @@ class PIDRec(BaseModel):
     src: str = "ai"
     ai_ch: int = 0
     out_ch: int = 0
-    target: float = 0.0
+    # Setpoint configuration
+    target: float = 0.0  # Legacy/default fixed setpoint value
+    sp_source: str = "fixed"  # "fixed", "ao", "math"
+    sp_channel: int = 0  # For "ao" or "math" sources
     kp: float = 0.0
     ki: float = 0.0
     kd: float = 0.0
-    out_min: Optional[float] = None
-    out_max: Optional[float] = None
+    # Output limits - can be fixed or dynamic
+    out_min: Optional[float] = None  # Fixed min value
+    out_max: Optional[float] = None  # Fixed max value
+    out_min_source: str = "fixed"  # "fixed" or "math"
+    out_min_channel: int = 0  # Math channel if out_min_source = "math"
+    out_max_source: str = "fixed"  # "fixed" or "math"
+    out_max_channel: int = 0  # Math channel if out_max_source = "math"
     err_min: Optional[float] = None
     err_max: Optional[float] = None
     i_min: Optional[float] = None

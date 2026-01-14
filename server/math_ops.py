@@ -114,7 +114,7 @@ class MathOpManager:
             elif inp.kind == "pid_u":
                 pid_vals = state.get("pid", [])
                 if inp.index < len(pid_vals):
-                    return pid_vals[inp.index].get("u", 0.0)
+                    return pid_vals[inp.index].get("out", 0.0)  # Use "out" (clamped) not "u" (raw)
                 return 0.0
             
             elif inp.kind == "math":

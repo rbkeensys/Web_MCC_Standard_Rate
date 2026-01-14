@@ -9,12 +9,18 @@ class LoopDef:
     src: str            # "ai" | "tc"
     ai_ch: int
     out_ch: int         # AO idx for analog, DO idx for digital
-    target: float
-    kp: float
-    ki: float
-    kd: float
-    out_min: Optional[float] = None
-    out_max: Optional[float] = None
+    target: float       # Fixed setpoint value (used when sp_source="fixed")
+    sp_source: str = "fixed"  # "fixed", "ao", "math"
+    sp_channel: int = 0       # Channel for "ao" or "math" sources
+    kp: float = 0.0
+    ki: float = 0.0
+    kd: float = 0.0
+    out_min: Optional[float] = None  # Fixed min value
+    out_max: Optional[float] = None  # Fixed max value
+    out_min_source: str = "fixed"  # "fixed" or "math"
+    out_min_channel: int = 0
+    out_max_source: str = "fixed"  # "fixed" or "math"
+    out_max_channel: int = 0
     err_min: Optional[float] = None
     err_max: Optional[float] = None
     i_min: Optional[float] = None
@@ -34,12 +40,19 @@ class _PID:
         self.last_u = 0.0      # Last output value (for decimated execution)
         # Store last telemetry values for skip cycles
         self.last_pv = 0.0
+        self.last_sp = 0.0
         self.last_err = 0.0
         self.last_p = 0.0
         self.last_d = 0.0
 
-    def step(self, pv: float, dt: float):
-        e = self.d.target - pv
+    def step(self, pv: float, sp: float, dt: float):
+        """
+        Execute one PID step
+        pv: process variable (current value)
+        sp: setpoint (target value)
+        dt: time step
+        """
+        e = sp - pv
         if self.d.err_min is not None: e = max(self.d.err_min, e)
         if self.d.err_max is not None: e = min(self.d.err_max, e)
         p = self.d.kp * e
@@ -54,6 +67,7 @@ class _PID:
         
         # Store for telemetry during skip cycles
         self.last_pv = pv
+        self.last_sp = sp
         self.last_err = e
         self.last_p = p
         self.last_d = d
@@ -186,6 +200,7 @@ class PIDManager:
                     "p_term": p.last_p,
                     "i_term": p.i,  # I term is always current
                     "d_term": p.last_d,
+                    "target": p.last_sp,  # Show last setpoint used
                     "enabled": True, 
                     "gated": False,
                     "skipped": True
@@ -211,19 +226,45 @@ class PIDManager:
                     # Use math operator output
                     if d.ai_ch < len(math_outputs):
                         pv = math_outputs[d.ai_ch]
-                u, err, p_term, i_term, d_term = p.step(pv, dt)
+                
+                # Compute setpoint from configured source
+                sp = d.target  # Default to fixed value
+                if d.sp_source == "ao":
+                    # Read AO value as setpoint
+                    if d.sp_channel < len(bridge.ao_cache):
+                        sp = bridge.ao_cache[d.sp_channel]
+                elif d.sp_source == "math" and math_outputs:
+                    # Use math operator output as setpoint
+                    if d.sp_channel < len(math_outputs):
+                        sp = math_outputs[d.sp_channel]
+                elif d.sp_source == "pid" and pid_prev:
+                    # Use another PID's output as setpoint (cascade control)
+                    if d.sp_channel < len(pid_prev):
+                        sp = pid_prev[d.sp_channel].get("out", 0.0)
+                
+                u, err, p_term, i_term, d_term = p.step(pv, sp, dt)
                 
                 # Store last output
                 p.last_u = u
                 
-                # Calculate output value
+                # Calculate output value with dynamic limits
                 if d.kind == "digital":
                     ov = 1.0 if u >= 0 else 0.0
                 elif d.kind == "var":
                     ov = u
                 else:  # analog
-                    lo = -10.0 if d.out_min is None else d.out_min
-                    hi =  10.0 if d.out_max is None else d.out_max
+                    # Compute out_min (fixed or from math)
+                    if d.out_min_source == "math" and math_outputs:
+                        lo = math_outputs[d.out_min_channel] if d.out_min_channel < len(math_outputs) else -10.0
+                    else:
+                        lo = -10.0 if d.out_min is None else d.out_min
+                    
+                    # Compute out_max (fixed or from math)
+                    if d.out_max_source == "math" and math_outputs:
+                        hi = math_outputs[d.out_max_channel] if d.out_max_channel < len(math_outputs) else 10.0
+                    else:
+                        hi = 10.0 if d.out_max is None else d.out_max
+                    
                     ov = max(lo, min(hi, u))
                 
                 # Write to hardware (we only get here if gate_enabled or no gate)
@@ -242,7 +283,7 @@ class PIDManager:
                     "p_term": p_term,
                     "i_term": i_term,
                     "d_term": d_term,
-                    "target": d.target,
+                    "target": sp,  # Show actual setpoint used (may be from AO/Math)
                     "enabled": True, 
                     "gated": False
                 })

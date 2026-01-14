@@ -1299,7 +1299,7 @@ async function createSignalSelector(kind, currentIndex, onChange) {
         index: i,
         name: `TC${i}`
       }));
-    } else if (kind === 'pid') {
+    } else if (kind === 'pid' || kind === 'pid_u') {
       const data = await (await fetch('/api/pid')).json();
       items = (data.loops || []).map((loop, i) => ({
         index: i,
@@ -2834,36 +2834,110 @@ function mountPIDPanel(w, body){
   if (w.opts.showControls){
     const ctr=el('div',{className:'compact'});
     const tbl=el('table',{className:'form'}); const tb=el('tbody');
-    const row=(label,input)=>{ const tr=el('tr'); tr.append(el('th',{},label), el('td',{},input)); tb.append(tr); };
-    const L={enabled:false,name:'',kind:'analog',src:'ai',ai_ch:0,out_ch:0,target:0,kp:0,ki:0,kd:0,out_min:0,out_max:1,err_min:-1,err_max:1,i_min:-1,i_max:1,enable_gate:false,enable_kind:'do',enable_index:0};
+    const row=(label,input)=>{ const tr=el('tr'); tr.append(el('th',{},label), el('td',{},input)); tb.append(tr); return tr; };
+    const L={enabled:false,name:'',kind:'analog',src:'ai',ai_ch:0,out_ch:0,target:0,kp:0,ki:0,kd:0,out_min:0,out_max:1,out_min_source:'fixed',out_min_channel:0,out_max_source:'fixed',out_max_channel:0,err_min:-1,err_max:1,i_min:-1,i_max:1,enable_gate:false,enable_kind:'do',enable_index:0,sp_source:'fixed',sp_channel:0};
 
     fetch('/api/pid').then(r=>r.json()).then(async pid=>{
       const idx=w.opts.loopIndex|0; Object.assign(L, pid.loops?.[idx]||{});
-      const selKind=selectEnum(['analog','digital','var'], L.kind||'analog', v=>L.kind=v);
-      const selSrc =selectEnum(['ai','ao','tc','pid','math'], L.src ||'ai',   async v=>{
-        L.src=v;
+      
+      // Create async signal selectors
+      let inputChSel = await createSignalSelector(L.src || 'ai', L.ai_ch || 0, newIdx => L.ai_ch = newIdx);
+      let outputChSel = await createSignalSelector(L.kind === 'analog' ? 'ao' : 'do', L.out_ch || 0, newIdx => L.out_ch = newIdx);
+      
+      // Create SP channel selector (will be rebuilt when sp_source changes)
+      let spChSel = (L.sp_source === 'ao' || L.sp_source === 'math' || L.sp_source === 'pid') 
+        ? await createSignalSelector(L.sp_source, L.sp_channel || 0, newIdx => L.sp_channel = newIdx)
+        : num(L, 'sp_channel', 1);
+      
+      // Create out_min channel selector
+      let outMinChSel = (L.out_min_source === 'math')
+        ? await createSignalSelector('math', L.out_min_channel || 0, newIdx => L.out_min_channel = newIdx)
+        : num(L, 'out_min_channel', 1);
+      
+      // Create out_max channel selector
+      let outMaxChSel = (L.out_max_source === 'math')
+        ? await createSignalSelector('math', L.out_max_channel || 0, newIdx => L.out_max_channel = newIdx)
+        : num(L, 'out_max_channel', 1);
+      
+      // Function to update visibility (will be called after rows are created)
+      let outputRow, spValueRow, spChRow, outMinValueRow, outMinChRow, outMaxValueRow, outMaxChRow;
+      const updateVisibility = () => {
+        if (outputRow) outputRow.style.display = (L.kind === 'var') ? 'none' : '';
+        if (spValueRow) spValueRow.style.display = (L.sp_source === 'fixed') ? '' : 'none';
+        if (spChRow) spChRow.style.display = (L.sp_source === 'fixed') ? 'none' : '';
+        if (outMinValueRow) outMinValueRow.style.display = (L.out_min_source === 'fixed') ? '' : 'none';
+        if (outMinChRow) outMinChRow.style.display = (L.out_min_source === 'fixed') ? 'none' : '';
+        if (outMaxValueRow) outMaxValueRow.style.display = (L.out_max_source === 'fixed') ? '' : 'none';
+        if (outMaxChRow) outMaxChRow.style.display = (L.out_max_source === 'fixed') ? 'none' : '';
+      };
+      
+      const selKind = selectEnum(['analog','digital','var'], L.kind||'analog', async v => {
+        L.kind = v;
+        // Rebuild output selector when kind changes
+        const newOutputSel = await createSignalSelector(v === 'analog' ? 'ao' : 'do', L.out_ch || 0, newIdx => L.out_ch = newIdx);
+        outputChSel.replaceWith(newOutputSel);
+        outputChSel = newOutputSel;
+        updateVisibility();
+      });
+      
+      const selSrc = selectEnum(['ai','ao','tc','pid','math'], L.src ||'ai', async v => {
+        L.src = v;
         // Rebuild input selector when source changes
         const newInputSel = await createSignalSelector(v, L.ai_ch || 0, newIdx => L.ai_ch = newIdx);
         inputChSel.replaceWith(newInputSel);
         inputChSel = newInputSel;
       });
       
-      // Create async signal selectors
-      let inputChSel = await createSignalSelector(L.src || 'ai', L.ai_ch || 0, newIdx => L.ai_ch = newIdx);
-      let outputChSel = await createSignalSelector(L.kind === 'analog' ? 'ao' : 'do', L.out_ch || 0, newIdx => L.out_ch = newIdx);
-      
+      // Build form rows
       row('enabled', chk(L,'enabled'));
       row('name', txt(L,'name'));
       row('kind', selKind);
       row('src',  selSrc);
       row('input',  inputChSel);
-      row('output', outputChSel);
-      row('target', num(L,'target',0.0001));
+      outputRow = row('output', outputChSel);
+      spValueRow = row('SP Value', num(L,'target',0.0001));
+      row('SP Src', selectEnum(['fixed','ao','pid','math'], L.sp_source||'fixed', async v => {
+        L.sp_source = v;
+        // Rebuild SP channel selector when source changes
+        const newSpChSel = (v === 'ao' || v === 'math' || v === 'pid')
+          ? await createSignalSelector(v, L.sp_channel || 0, newIdx => L.sp_channel = newIdx)
+          : num(L, 'sp_channel', 1);
+        spChSel.replaceWith(newSpChSel);
+        spChSel = newSpChSel;
+        updateVisibility();
+      }));
+      spChRow = row('SP Ch', spChSel);
+      
+      updateVisibility(); // Set initial visibility
+      
       row('kp',     num(L,'kp',0.0001));
       row('ki',     num(L,'ki',0.0001));
       row('kd',     num(L,'kd',0.0001));
-      row('out_min',num(L,'out_min',0.0001));
-      row('out_max',num(L,'out_max',0.0001));
+      
+      outMinValueRow = row('Out Min', num(L,'out_min',0.0001));
+      row('Out Min Src', selectEnum(['fixed','math'], L.out_min_source||'fixed', async v => {
+        L.out_min_source = v;
+        const newSel = (v === 'math')
+          ? await createSignalSelector('math', L.out_min_channel || 0, newIdx => L.out_min_channel = newIdx)
+          : num(L, 'out_min_channel', 1);
+        outMinChSel.replaceWith(newSel);
+        outMinChSel = newSel;
+        updateVisibility();
+      }));
+      outMinChRow = row('Out Min Ch', outMinChSel);
+      
+      outMaxValueRow = row('Out Max', num(L,'out_max',0.0001));
+      row('Out Max Src', selectEnum(['fixed','math'], L.out_max_source||'fixed', async v => {
+        L.out_max_source = v;
+        const newSel = (v === 'math')
+          ? await createSignalSelector('math', L.out_max_channel || 0, newIdx => L.out_max_channel = newIdx)
+          : num(L, 'out_max_channel', 1);
+        outMaxChSel.replaceWith(newSel);
+        outMaxChSel = newSel;
+        updateVisibility();
+      }));
+      outMaxChRow = row('Out Max Ch', outMaxChSel);
+      
       row('err_min',num(L,'err_min',0.0001));
       row('err_max',num(L,'err_max',0.0001));
       row('i_min',  num(L,'i_min',0.0001));
@@ -3904,11 +3978,17 @@ async function openPidForm(){
         ai_ch: 0,
         out_ch: 0,
         target: 0.0,
+        sp_source: 'fixed',
+        sp_channel: 0,
         kp: 1.0,
         ki: 0.0,
         kd: 0.0,
         out_min: -10.0,
         out_max: 10.0,
+        out_min_source: 'fixed',
+        out_min_channel: 0,
+        out_max_source: 'fixed',
+        out_max_channel: 0,
         err_min: null,
         err_max: null,
         i_min: null,
@@ -3926,7 +4006,7 @@ async function openPidForm(){
 
   const formContainer = el('div', {});
 
-  const buildForm = () => {
+  const buildForm = async () => {
     formContainer.innerHTML = '';
     
     const table = el('table', {className:'form', style:'table-layout:auto'});
@@ -3939,7 +4019,9 @@ async function openPidForm(){
       el('th', {}, 'Src'),
       el('th', {}, 'AI Ch'),
       el('th', {}, 'Out Ch'),
-      el('th', {}, 'Target'),
+      el('th', {}, 'Set Point'),  // Changed from Target
+      el('th', {}, 'SP Src'),     // New: SP source selector
+      el('th', {}, 'SP Ch'),      // New: SP channel
       el('th', {}, 'Kp'),
       el('th', {}, 'Ki'),
       el('th', {}, 'Kd'),
@@ -3958,7 +4040,10 @@ async function openPidForm(){
     
     const tbody = el('tbody');
     
-    loops.forEach((L, idx) => {
+    // Build rows asynchronously to use signal selectors
+    for (let idx = 0; idx < loops.length; idx++) {
+      const L = loops[idx];
+      
       const removeBtn = el('button', {
         className: 'btn danger',
         onclick: () => {
@@ -3969,32 +4054,59 @@ async function openPidForm(){
         }
       }, '×');
       
+      // Create signal selectors
+      const aiChSel = await createSignalSelector(L.src || 'ai', L.ai_ch || 0, v => L.ai_ch = v);
+      const outChSel = await createSignalSelector(L.kind === 'analog' ? 'ao' : 'do', L.out_ch || 0, v => L.out_ch = v);
+      const spChSel = (L.sp_source === 'ao' || L.sp_source === 'math' || L.sp_source === 'pid')
+        ? await createSignalSelector(L.sp_source, L.sp_channel || 0, v => L.sp_channel = v)
+        : num(L, 'sp_channel', 1);
+      
+      // Out Min cell: show source selector + value/channel
+      const outMinCell = el('td', {style: 'min-width:150px'});
+      const outMinSrcSel = selectEnum(['fixed','math'], L.out_min_source||'fixed', v => {L.out_min_source=v; buildForm();});
+      const outMinContent = (L.out_min_source === 'math')
+        ? await createSignalSelector('math', L.out_min_channel || 0, v => L.out_min_channel = v)
+        : num(L, 'out_min', 0.0001);
+      outMinCell.append(outMinSrcSel, el('br'), outMinContent);
+      
+      // Out Max cell: show source selector + value/channel
+      const outMaxCell = el('td', {style: 'min-width:150px'});
+      const outMaxSrcSel = selectEnum(['fixed','math'], L.out_max_source||'fixed', v => {L.out_max_source=v; buildForm();});
+      const outMaxContent = (L.out_max_source === 'math')
+        ? await createSignalSelector('math', L.out_max_channel || 0, v => L.out_max_channel = v)
+        : num(L, 'out_max', 0.0001);
+      outMaxCell.append(outMaxSrcSel, el('br'), outMaxContent);
+      
+      const gateChSel = await createSignalSelector(L.enable_kind || 'do', L.enable_index || 0, v => L.enable_index = v);
+      
       const tr = el('tr', {}, [
         el('td', {}, `${idx}`),
         el('td', {}, chk(L, 'enabled')),
         el('td', {}, txt(L, 'name')),
-        el('td', {}, selectEnum(['analog','digital','var'], L.kind||'analog', v=>L.kind=v)),
-        el('td', {}, selectEnum(['ai','ao','tc','pid','math'], L.src||'ai', v=>L.src=v)),
-        el('td', {}, num(L, 'ai_ch', 1)),
-        el('td', {}, num(L, 'out_ch', 1)),
-        el('td', {}, num(L, 'target', 0.0001)),
+        el('td', {}, selectEnum(['analog','digital','var'], L.kind||'analog', v=>{L.kind=v; buildForm();})),  // Rebuild when kind changes
+        el('td', {}, selectEnum(['ai','ao','tc','pid','math'], L.src||'ai', v=>{L.src=v; buildForm();})),  // Rebuild on src change
+        el('td', {}, aiChSel),
+        el('td', {}, outChSel),  // Use selector instead of num
+        el('td', {}, num(L, 'target', 0.0001)),  // Fixed SP value
+        el('td', {}, selectEnum(['fixed','ao','pid','math'], L.sp_source||'fixed', v=>{L.sp_source=v; buildForm();})),  // Rebuild on sp_source change
+        el('td', {}, spChSel),
         el('td', {}, num(L, 'kp', 0.0001)),
         el('td', {}, num(L, 'ki', 0.0001)),
         el('td', {}, num(L, 'kd', 0.0001)),
-        el('td', {}, num(L, 'out_min', 0.0001)),
-        el('td', {}, num(L, 'out_max', 0.0001)),
+        outMinCell,  // Combined source + value/channel
+        outMaxCell,  // Combined source + value/channel
         el('td', {}, num(L, 'err_min', 0.0001)),
         el('td', {}, num(L, 'err_max', 0.0001)),
         el('td', {}, num(L, 'i_min', 0.0001)),
         el('td', {}, num(L, 'i_max', 0.0001)),
         el('td', {}, num(L, 'execution_rate_hz', 1)),
         el('td', {}, chk(L, 'enable_gate')),
-        el('td', {}, selectEnum(['do','le'], L.enable_kind||'do', v=>L.enable_kind=v)),
-        el('td', {}, num(L, 'enable_index', 1)),
+        el('td', {}, selectEnum(['do','le'], L.enable_kind||'do', v=>{L.enable_kind=v; buildForm();})),  // Rebuild on gate kind change
+        el('td', {}, gateChSel),
         el('td', {}, removeBtn)
       ]);
       tbody.append(tr);
-    });
+    }
     
     table.append(thead, tbody);
     formContainer.append(table);
