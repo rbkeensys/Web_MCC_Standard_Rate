@@ -14,7 +14,7 @@
     {
       "name": "DP Flow 1",
       "slope": 50.0,
-      "offset": -25.85333251953125,
+      "offset": -24.6484375,
       "cutoffHz": 0.1,
       "units": "psi",
       "include": true
@@ -22,7 +22,7 @@
     {
       "name": "DP Flow 2",
       "slope": 50.0,
-      "offset": -26.136581420898438,
+      "offset": -25.177459716796875,
       "cutoffHz": 0.1,
       "units": "psi",
       "include": true
@@ -30,7 +30,7 @@
     {
       "name": "DP Level 1",
       "slope": 50.0,
-      "offset": -25.433074951171875,
+      "offset": -24.48577880859375,
       "cutoffHz": 0.1,
       "units": "psi",
       "include": true
@@ -38,7 +38,7 @@
     {
       "name": "DP Level 2",
       "slope": 50.0,
-      "offset": -25.323013305664062,
+      "offset": -25.169830322265625,
       "cutoffHz": 0.1,
       "units": "psi",
       "include": true

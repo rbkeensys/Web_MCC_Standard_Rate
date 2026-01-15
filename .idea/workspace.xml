@@ -4,8 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6ee747c5-542f-43af-b33e-a97c54c29c34" name="Changes" comment="Added preliminary support for multi-input math/LE's.  Fixed some US issues and implementation of LE output.  TODO: add variable SP input to PID's.  Make Math and LE inputs to PID's use names instead of indexes.">
-      <change afterPath="$PROJECT_DIR$/PumpControlLayout.json" afterDir="false" />
+    <list default="true" id="6ee747c5-542f-43af-b33e-a97c54c29c34" name="Changes" comment="Working enough for nested control loops, added PID execution rate, added variable setpoint and min/max controls in PID's, cleaned up some input selection in editors and elements.   TODO: Multi input (3 or more) math and logic elements.  Playback needs to write to bar graphs too.">
       <change afterPath="$PROJECT_DIR$/server/logs/20251118_173145/session.csv" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/server/logs/20251118_173337/session.csv" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/server/logs/20251118_173432/session.csv" afterDir="false" />
@@ -270,9 +269,6 @@
       <change afterPath="$PROJECT_DIR$/server/logs/20260112_091429/session.csv" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Boiler Control.json" beforeDir="false" afterPath="$PROJECT_DIR$/Boiler Control.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/LEPlayingLayout.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/NewLayout.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/app_models.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/app_models.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/config/PID.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/PID.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/config/config.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/config.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/config/logic_elements.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/logic_elements.json" afterDir="false" />
@@ -282,6 +278,7 @@
       <change beforePath="$PROJECT_DIR$/server/pid_core.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/pid_core.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/server.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/server.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/web/app.js" beforeDir="false" afterPath="$PROJECT_DIR$/web/app.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/web/index.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -289,6 +286,11 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="master" />
+      </map>
+    </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
   <component name="GitHubPullRequestSearchHistory">{
@@ -311,24 +313,25 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;Python.MCC Web App.executor&quot;: &quot;Run&quot;,
-    &quot;Python.mcc_bridge.executor&quot;: &quot;Run&quot;,
-    &quot;Python.server.executor&quot;: &quot;Run&quot;,
-    &quot;Python.test_pid_var.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
-    &quot;ai.playground.ignore.import.keys.banner.in.settings&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/russ/Desktop/Web MCC App/Fast Bak1/Web-MCC-DAQ-and-Control Fast&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.MCC Web App.executor": "Run",
+    "Python.mcc_bridge.executor": "Run",
+    "Python.server.executor": "Run",
+    "Python.test_pid_var.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "ai.playground.ignore.import.keys.banner.in.settings": "true",
+    "git-widget-placeholder": "use__expressions",
+    "last_opened_file_path": "C:/Users/russ/Desktop/Web MCC App/Fast Bak1/Web-MCC-DAQ-and-Control Fast",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="RunManager">
     <configuration name="MCC Web App" type="PythonConfigurationType" factoryName="Python" temporary="true">
       <module name="Web-MCC-DAQ-and-Control Fast" />
@@ -389,6 +392,8 @@
       <workItem from="1767904189408" duration="5366000" />
       <workItem from="1767973671090" duration="7039000" />
       <workItem from="1768230041160" duration="23502000" />
+      <workItem from="1768402776534" duration="11437000" />
+      <workItem from="1768488468454" duration="3437000" />
     </task>
     <task id="LOCAL-00001" summary="Working standard rate, now has all editors working config, PID, script.  Scripts run too.">
       <option name="closed" value="true" />
@@ -558,7 +563,15 @@
       <option name="project" value="LOCAL" />
       <updated>1768325739897</updated>
     </task>
-    <option name="localTasksCounter" value="22" />
+    <task id="LOCAL-00022" summary="Working enough for nested control loops, added PID execution rate, added variable setpoint and min/max controls in PID's, cleaned up some input selection in editors and elements.   TODO: Multi input (3 or more) math and logic elements.  Playback needs to write to bar graphs too.">
+      <option name="closed" value="true" />
+      <created>1768403265457</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1768403265457</updated>
+    </task>
+    <option name="localTasksCounter" value="23" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -593,7 +606,8 @@
     <MESSAGE value="Cleaned up debug statements and added zeroing function." />
     <MESSAGE value="Fixed some UI issues, new big TODO: Allowing long math inputs so we can combine many operators including logical and conditional.  This will be two phased." />
     <MESSAGE value="Added preliminary support for multi-input math/LE's.  Fixed some US issues and implementation of LE output.  TODO: add variable SP input to PID's.  Make Math and LE inputs to PID's use names instead of indexes." />
-    <option name="LAST_COMMIT_MESSAGE" value="Added preliminary support for multi-input math/LE's.  Fixed some US issues and implementation of LE output.  TODO: add variable SP input to PID's.  Make Math and LE inputs to PID's use names instead of indexes." />
+    <MESSAGE value="Working enough for nested control loops, added PID execution rate, added variable setpoint and min/max controls in PID's, cleaned up some input selection in editors and elements.   TODO: Multi input (3 or more) math and logic elements.  Playback needs to write to bar graphs too." />
+    <option name="LAST_COMMIT_MESSAGE" value="Working enough for nested control loops, added PID execution rate, added variable setpoint and min/max controls in PID's, cleaned up some input selection in editors and elements.   TODO: Multi input (3 or more) math and logic elements.  Playback needs to write to bar graphs too." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -607,6 +621,6 @@
     </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/server_py$MCC_Web_App.coverage" NAME="MCC Web App Coverage Results" MODIFIED="1768338813910" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
+    <SUITE FILE_PATH="coverage/server_py$MCC_Web_App.coverage" NAME="MCC Web App Coverage Results" MODIFIED="1768491942630" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
   </component>
 </project>

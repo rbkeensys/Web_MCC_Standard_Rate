@@ -1,3 +1,11 @@
+"""
+Version: 1.0.0
+Updated: 2026-01-14 23:30:56
+"""
+__version__ = "1.0.0"
+__updated__ = "2026-01-14 23:30:56"
+
+
 # server/server.py
 # Python 3.10+
 import asyncio, json, time, os, sys
@@ -20,6 +28,8 @@ from motor_controller import MotorManager, list_serial_ports
 from logic_elements import LEManager
 from math_ops import MathOpManager, MathOpFile
 from app_models import LEFile, LogicElementCfg
+from expr_manager import ExpressionManager
+from expr_engine import global_vars as expr_global_vars
 import logging, os, math
 SERVER_VERSION = "0.9.11"  # Added PID execution rate, IF statements, Math outputs
 
@@ -46,6 +56,7 @@ log = logging.getLogger("mcc")
 
 
 print(f"[MCC-Hub] Python {sys.version.split()[0]} on {sys.platform}")
+print(f"[MCC-Hub] Server version {__version__} (updated: {__updated__})")
 print(f"[MCC-Hub] ROOT={ROOT}")
 print(f"[MCC-Hub] CFG_DIR={CFG_DIR} exists={CFG_DIR.exists()}")
 print(f"[MCC-Hub] WEB_DIR={WEB_DIR} exists={WEB_DIR.exists()}")
@@ -105,9 +116,24 @@ def api_diag():
 
 @app.get("/api/version")
 def get_version():
+    """Get version info for all components"""
+    try:
+        import expr_engine
+        import expr_manager
+        expr_engine_ver = getattr(expr_engine, '__version__', 'unknown')
+        expr_manager_ver = getattr(expr_manager, '__version__', 'unknown')
+    except:
+        expr_engine_ver = 'not loaded'
+        expr_manager_ver = 'not loaded'
+    
     return {
-        "server": SERVER_VERSION,
+        "server": __version__,
+        "updated": __updated__,
         "bridge": BRIDGE_VERSION,
+        "expr_engine": expr_engine_ver,
+        "expr_manager": expr_manager_ver,
+        "python": sys.version.split()[0],
+        "platform": sys.platform
     }
 
 @app.get("/api/layout")
@@ -280,6 +306,10 @@ def load_math():
     else:
         log.info("[MathOps] No math_operators.json found, creating default")
         MATH_PATH.write_text(json.dumps({"operators": []}, indent=2))
+
+# Expression Manager
+expr_mgr = ExpressionManager(filepath=str(CFG_DIR / "expressions.json"))
+log.info(f"[EXPR] Loaded {len(expr_mgr.expressions)} expressions")
 
 load_math()
 
@@ -692,19 +722,7 @@ async def acq_loop():
 
     finally:
         print("[MCC-Hub] Acquisition loop stopping")
-        mcc.close()
-        if session_logger:
-            session_logger.close()
-            session_logger = None
 
-
-
-
-# ---------- REST: configuration ----------
-class BuzzStart(BaseModel):
-    index: int
-    hz: float = 10.0
-    active_high: bool = True
 
 
 @app.get("/api/config")
@@ -745,6 +763,69 @@ def put_math_operators(body: dict):
     math_file = MathOpFile.model_validate(body)
     MATH_PATH.write_text(json.dumps(math_file.model_dump(), indent=2))
     load_math()
+    return {"ok": True}
+
+@app.get("/api/expressions")
+def get_expressions():
+    """Get all expressions"""
+    return expr_mgr.to_dict()
+
+@app.put("/api/expressions")
+def put_expressions(body: dict):
+    """Save expressions"""
+    try:
+        expr_mgr.from_dict(body)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.post("/api/expressions/check")
+def check_expression_syntax(body: dict):
+    """Check expression syntax"""
+    expression = body.get('expression', '')
+    
+    # Build test signal state with current config
+    test_state = {
+        'ai_list': [{'name': ch.name} for ch in app_cfg.analogs],
+        'ai': [0.0] * len(app_cfg.analogs),
+        'ao_list': [{'name': ch.name} for ch in (app_cfg.analogOutputs or [])],
+        'ao': [0.0] * len(app_cfg.analogOutputs or []),
+        'tc_list': [{'name': tc.name} for tc in (app_cfg.thermocouples or [])],
+        'tc': [0.0] * len(app_cfg.thermocouples or []),
+        'do_list': [{'name': ch.name} for ch in (app_cfg.digitalOutputs or [])],
+        'do': [0] * len(app_cfg.digitalOutputs or []),
+        'pid_list': [{'name': loop.name} for loop in (pid_mgr.meta if pid_mgr else [])],
+        'pid': [{'out': 0, 'u': 0, 'pv': 0, 'target': 0, 'err': 0}] * len(pid_mgr.meta if pid_mgr else []),
+        'math_list': [{'name': op.name} for op in math_mgr.operators],
+        'math': [0.0] * len(math_mgr.operators),
+        'le_list': [{'name': elem.name} for elem in le_mgr.elements],
+        'le': [0] * len(le_mgr.elements),
+        'expr_list': [{'name': expr.name} for expr in expr_mgr.expressions],
+        'expr': [0.0] * len(expr_mgr.expressions),
+        'time': 0.0,
+        'sample': 0
+    }
+    
+    return expr_mgr.check_syntax(expression, test_state)
+
+@app.get("/api/expressions/globals")
+def get_expression_globals():
+    """Get all global variables"""
+    return {"globals": expr_global_vars.list_all()}
+
+@app.delete("/api/expressions/globals")
+def delete_expression_global(body: dict):
+    """Delete a specific global variable"""
+    name = body.get('name')
+    if name and name in expr_global_vars._vars:
+        del expr_global_vars._vars[name]
+        return {"ok": True}
+    return {"ok": False, "error": "Variable not found"}
+
+@app.post("/api/expressions/globals/clear")
+def clear_expression_globals():
+    """Clear all global variables"""
+    expr_global_vars.clear()
     return {"ok": True}
 
 @app.get("/api/script")
@@ -907,6 +988,11 @@ def set_do(req: DOReq):
     
     mcc.set_do(idx, target_state, active_high=active_high)
     return {"ok": True}
+
+class BuzzStart(BaseModel):
+    index: int
+    hz: float
+    active_high: bool = True
 
 class BuzzStop(BaseModel):
     index: int

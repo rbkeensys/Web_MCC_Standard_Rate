@@ -22,9 +22,9 @@ class LogicOp(str, Enum):
 @dataclass
 class LEInput:
     """Represents one input to a logic element"""
-    kind: str  # "do", "ai", "ao", "tc", "pid_u", "le"
+    kind: str  # "do", "ai", "ao", "tc", "pid_u", "le", "math", "expr"
     index: int
-    # For analog inputs (ai, ao, tc, pid_u):
+    # For analog inputs (ai, ao, tc, pid_u, math, expr):
     comparison: Optional[str] = None  # "lt", "eq", "gt"
     compare_to_type: Optional[str] = None  # "value" or "signal"
     compare_value: Optional[float] = None  # if comparing to fixed value
@@ -150,7 +150,7 @@ class LEManager:
                         return val != 0.0
                 return False
             
-            elif inp.kind in ["ai", "ao", "tc", "pid_u"]:
+            elif inp.kind in ["ai", "ao", "tc", "pid_u", "math", "expr"]:
                 # Get the analog value
                 if inp.kind == "ai":
                     vals = state.get("ai", [])
@@ -163,6 +163,14 @@ class LEManager:
                     pid_vals = state.get("pid", [])
                     if inp.index < len(pid_vals):
                         val = pid_vals[inp.index].get("out", 0.0)  # Use "out" (clamped) not "u" (raw)
+                    else:
+                        val = 0.0
+                    vals = [val]  # Wrap in list for consistent handling
+                elif inp.kind == "expr":
+                    # Get expression output value
+                    expr_vals = state.get("expr", [])
+                    if inp.index < len(expr_vals):
+                        val = expr_vals[inp.index]
                     else:
                         val = 0.0
                     vals = [val]  # Wrap in list for consistent handling
@@ -192,8 +200,22 @@ class LEManager:
                         cvals = state.get("tc", [])
                     elif inp.compare_to_kind == "pid_u":
                         pid_vals = state.get("pid", [])
-                        if inp.compare_to_index < len(pid_vals):
+                        if inp.compare_to_index is not None and inp.compare_to_index < len(pid_vals):
                             compare_val = pid_vals[inp.compare_to_index].get("out", 0.0)  # Use "out" not "u"
+                        else:
+                            compare_val = 0.0
+                        cvals = [compare_val]
+                    elif inp.compare_to_kind == "math":
+                        math_vals = state.get("math", [])
+                        if inp.compare_to_index is not None and inp.compare_to_index < len(math_vals):
+                            compare_val = math_vals[inp.compare_to_index].get("output", 0.0)
+                        else:
+                            compare_val = 0.0
+                        cvals = [compare_val]
+                    elif inp.compare_to_kind == "expr":
+                        expr_vals = state.get("expr", [])
+                        if inp.compare_to_index is not None and inp.compare_to_index < len(expr_vals):
+                            compare_val = expr_vals[inp.compare_to_index]
                         else:
                             compare_val = 0.0
                         cvals = [compare_val]

@@ -28,7 +28,7 @@
         "index": 0,
         "comparison": "lt",
         "compare_to_type": "value",
-        "compare_value": 160.0,
+        "compare_value": 175.0,
         "compare_to_kind": "ao",
         "compare_to_index": null
       },
@@ -131,7 +131,7 @@
     },
     {
       "enabled": true,
-      "name": "3: Pump Lvl Enable",
+      "name": "3: High Level Inhibit",
       "inputs": [
         {
           "kind": "do",
@@ -207,6 +207,49 @@
       "input_b": {
         "kind": "le",
         "index": 3,
+        "comparison": null,
+        "compare_to_type": null,
+        "compare_value": null,
+        "compare_to_kind": null,
+        "compare_to_index": null
+      },
+      "operation": "and"
+    },
+    {
+      "enabled": true,
+      "name": "5: Heater Final En",
+      "inputs": [
+        {
+          "kind": "do",
+          "index": 0,
+          "comparison": null,
+          "compare_to_type": null,
+          "compare_value": null,
+          "compare_to_kind": null,
+          "compare_to_index": null
+        },
+        {
+          "kind": "do",
+          "index": 0,
+          "comparison": null,
+          "compare_to_type": null,
+          "compare_value": null,
+          "compare_to_kind": null,
+          "compare_to_index": null
+        }
+      ],
+      "input_a": {
+        "kind": "math",
+        "index": 15,
+        "comparison": "gt",
+        "compare_to_type": "value",
+        "compare_value": 0.0,
+        "compare_to_kind": null,
+        "compare_to_index": null
+      },
+      "input_b": {
+        "kind": "le",
+        "index": 2,
         "comparison": null,
         "compare_to_type": null,
         "compare_value": null,

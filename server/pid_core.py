@@ -6,20 +6,20 @@ from typing import List, Dict, Optional
 class LoopDef:
     enabled: bool
     kind: str           # "analog" | "digital" | "var"
-    src: str            # "ai" | "tc"
+    src: str            # "ai" | "tc" | "ao" | "pid" | "math" | "expr"
     ai_ch: int
     out_ch: int         # AO idx for analog, DO idx for digital
     target: float       # Fixed setpoint value (used when sp_source="fixed")
-    sp_source: str = "fixed"  # "fixed", "ao", "math"
-    sp_channel: int = 0       # Channel for "ao" or "math" sources
+    sp_source: str = "fixed"  # "fixed", "ao", "math", "expr"
+    sp_channel: int = 0       # Channel for "ao", "math", or "expr" sources
     kp: float = 0.0
     ki: float = 0.0
     kd: float = 0.0
     out_min: Optional[float] = None  # Fixed min value
     out_max: Optional[float] = None  # Fixed max value
-    out_min_source: str = "fixed"  # "fixed" or "math"
+    out_min_source: str = "fixed"  # "fixed" or "math" or "expr"
     out_min_channel: int = 0
-    out_max_source: str = "fixed"  # "fixed" or "math"
+    out_max_source: str = "fixed"  # "fixed" or "math" or "expr"
     out_max_channel: int = 0
     err_min: Optional[float] = None
     err_max: Optional[float] = None
@@ -112,7 +112,7 @@ class PIDManager:
         self.meta = new_meta
         self.last_gate_states = new_gate_states
 
-    def step(self, ai_vals: List[float], tc_vals: List[float], bridge, do_state=None, le_state=None, pid_prev=None, math_outputs=None, sample_rate_hz=100.0) -> List[Dict]:
+    def step(self, ai_vals: List[float], tc_vals: List[float], bridge, do_state=None, le_state=None, pid_prev=None, math_outputs=None, expr_outputs=None, sample_rate_hz=100.0) -> List[Dict]:
         import time
         dt = 1.0 / max(1.0, sample_rate_hz)  # Time step in seconds
         tel = []
@@ -226,6 +226,10 @@ class PIDManager:
                     # Use math operator output
                     if d.ai_ch < len(math_outputs):
                         pv = math_outputs[d.ai_ch]
+                elif d.src == "expr":
+                    # Use expression output
+                    if expr_outputs and d.ai_ch < len(expr_outputs):
+                        pv = expr_outputs[d.ai_ch]
                 
                 # Compute setpoint from configured source
                 sp = d.target  # Default to fixed value
@@ -237,6 +241,10 @@ class PIDManager:
                     # Use math operator output as setpoint
                     if d.sp_channel < len(math_outputs):
                         sp = math_outputs[d.sp_channel]
+                elif d.sp_source == "expr" and expr_outputs:
+                    # Use expression output as setpoint
+                    if d.sp_channel < len(expr_outputs):
+                        sp = expr_outputs[d.sp_channel]
                 elif d.sp_source == "pid" and pid_prev:
                     # Use another PID's output as setpoint (cascade control)
                     if d.sp_channel < len(pid_prev):
@@ -253,15 +261,19 @@ class PIDManager:
                 elif d.kind == "var":
                     ov = u
                 else:  # analog
-                    # Compute out_min (fixed or from math)
+                    # Compute out_min (fixed, from math, or from expr)
                     if d.out_min_source == "math" and math_outputs:
                         lo = math_outputs[d.out_min_channel] if d.out_min_channel < len(math_outputs) else -10.0
+                    elif d.out_min_source == "expr" and expr_outputs:
+                        lo = expr_outputs[d.out_min_channel] if d.out_min_channel < len(expr_outputs) else -10.0
                     else:
                         lo = -10.0 if d.out_min is None else d.out_min
                     
-                    # Compute out_max (fixed or from math)
+                    # Compute out_max (fixed, from math, or from expr)
                     if d.out_max_source == "math" and math_outputs:
                         hi = math_outputs[d.out_max_channel] if d.out_max_channel < len(math_outputs) else 10.0
+                    elif d.out_max_source == "expr" and expr_outputs:
+                        hi = expr_outputs[d.out_max_channel] if d.out_max_channel < len(expr_outputs) else 10.0
                     else:
                         hi = 10.0 if d.out_max is None else d.out_max
                     

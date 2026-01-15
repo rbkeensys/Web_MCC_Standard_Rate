@@ -710,6 +710,7 @@ function wireUI(){
   $('#editMotor')?.addEventListener('click', ()=>openMotorEditor());
   $('#editLE')?.addEventListener('click', ()=>openLEEditor());  // Logic Elements
   $('#editMath')?.addEventListener('click', ()=>openMathEditor());  // Math Operators
+  $('#editExpr')?.addEventListener('click', ()=>openExpressionEditor());  // Expression Editor
   $('#editScript')?.addEventListener('click', ()=>openScriptEditor());
   $('#zeroAI')?.addEventListener('click', ()=>openZeroAIDialog());  // Zero AI channels
   $('#saveLayout')?.addEventListener('click', saveLayoutToFile);
@@ -2908,8 +2909,6 @@ function mountPIDPanel(w, body){
       }));
       spChRow = row('SP Ch', spChSel);
       
-      updateVisibility(); // Set initial visibility
-      
       row('kp',     num(L,'kp',0.0001));
       row('ki',     num(L,'ki',0.0001));
       row('kd',     num(L,'kd',0.0001));
@@ -2937,6 +2936,8 @@ function mountPIDPanel(w, body){
         updateVisibility();
       }));
       outMaxChRow = row('Out Max Ch', outMaxChSel);
+      
+      updateVisibility(); // Set initial visibility AFTER all row variables are assigned
       
       row('err_min',num(L,'err_min',0.0001));
       row('err_max',num(L,'err_max',0.0001));
@@ -5547,6 +5548,286 @@ async function openScriptEditor() {
     showModal(root);
   }
 
+}
+
+/* ----------------------------- Expression Editor -------------------------------- */
+async function openExpressionEditor() {
+  let expressions = [];
+  
+  // Load expressions from server
+  try {
+    const resp = await fetch('/api/expressions');
+    const data = await resp.json();
+    expressions = data.expressions || [];
+  } catch (e) {
+    console.error('Failed to load expressions:', e);
+  }
+  
+  const root = el('div', {});
+  const title = el('h2', {}, 'Expression Editor');
+  
+  const container = el('div', {style: 'display:flex; gap:20px; height:60vh;'});
+  
+  // Left panel: Expression list
+  const listPanel = el('div', {style: 'flex:1; display:flex; flex-direction:column; gap:10px; overflow:auto;'});
+  
+  // Right panel: Editor
+  const editorPanel = el('div', {style: 'flex:2; display:flex; flex-direction:column; gap:10px;'});
+  
+  let selectedExpr = null;
+  
+  function renderList() {
+    listPanel.innerHTML = '';
+    
+    const addBtn = el('button', {
+      className: 'btn',
+      onclick: () => {
+        const name = prompt('Expression name:');
+        if (!name) return;
+        expressions.push({
+          name: name,
+          enabled: true,
+          expression: '// Write your expression here\n0'
+        });
+        renderList();
+        selectExpression(expressions[expressions.length - 1]);
+      }
+    }, '+ Add Expression');
+    
+    listPanel.append(addBtn);
+    
+    expressions.forEach((expr, idx) => {
+      const card = el('div', {
+        style: `padding:10px; border:1px solid ${selectedExpr === expr ? '#4a9eff' : '#2a3046'}; border-radius:6px; cursor:pointer; background:${selectedExpr === expr ? '#1a2030' : 'transparent'}`,
+        onclick: () => selectExpression(expr)
+      });
+      
+      const title = el('div', {style: 'font-weight:bold; margin-bottom:5px;'}, expr.name);
+      const status = el('div', {style: `font-size:12px; color:${expr.enabled ? '#4a9eff' : '#666'}`}, 
+        expr.enabled ? '✓ Enabled' : '✗ Disabled');
+      
+      card.append(title, status);
+      listPanel.append(card);
+    });
+  }
+  
+  function selectExpression(expr) {
+    selectedExpr = expr;
+    renderList();
+    renderEditor();
+  }
+  
+  function renderEditor() {
+    editorPanel.innerHTML = '';
+    
+    if (!selectedExpr) {
+      editorPanel.append(el('div', {style: 'color:#666; text-align:center; margin-top:50px;'}, 
+        'Select an expression to edit'));
+      return;
+    }
+    
+    // Expression name and enabled
+    const topRow = el('div', {className: 'row', style: 'margin-bottom:10px;'});
+    topRow.append(
+      el('label', {style: 'flex:1'}, [
+        'Name: ',
+        el('input', {
+          type: 'text',
+          value: selectedExpr.name,
+          oninput: e => selectedExpr.name = e.target.value,
+          style: 'width:100%;'
+        })
+      ]),
+      el('label', {}, [
+        el('input', {
+          type: 'checkbox',
+          checked: selectedExpr.enabled,
+          onchange: e => selectedExpr.enabled = e.target.checked
+        }),
+        ' Enabled'
+      ])
+    );
+    editorPanel.append(topRow);
+    
+    // Expression textarea
+    const textareaLabel = el('div', {style: 'font-weight:bold; margin-bottom:5px;'}, 'Expression:');
+    const textarea = el('textarea', {
+      value: selectedExpr.expression || '',
+      oninput: e => selectedExpr.expression = e.target.value,
+      style: 'width:100%; height:300px; font-family:monospace; font-size:14px; background:#0d1117; color:#c9d1d9; border:1px solid #2a3046; border-radius:6px; padding:10px;'
+    });
+    
+    editorPanel.append(textareaLabel, textarea);
+    
+    // Syntax check button and result
+    const syntaxRow = el('div', {style: 'display:flex; gap:10px; align-items:center;'});
+    const syntaxResult = el('div', {style: 'flex:1; padding:10px; border-radius:6px; font-size:14px; font-family:monospace;'});
+    
+    const checkBtn = el('button', {
+      className: 'btn',
+      onclick: async () => {
+        try {
+          const resp = await fetch('/api/expressions/check', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({expression: selectedExpr.expression})
+          });
+          const result = await resp.json();
+          
+          if (result.ok) {
+            syntaxResult.style.background = '#1a3a1a';
+            syntaxResult.style.color = '#4a9';
+            syntaxResult.textContent = `✓ Syntax OK - Result: ${result.result.toFixed(4)}`;
+            if (result.locals && Object.keys(result.locals).length > 0) {
+              syntaxResult.textContent += `\nLocal vars: ${JSON.stringify(result.locals, null, 2)}`;
+            }
+          } else {
+            syntaxResult.style.background = '#3a1a1a';
+            syntaxResult.style.color = '#f88';
+            syntaxResult.textContent = `✗ Error: ${result.error}`;
+          }
+        } catch (e) {
+          syntaxResult.style.background = '#3a1a1a';
+          syntaxResult.style.color = '#f88';
+          syntaxResult.textContent = `✗ Failed to check: ${e.message}`;
+        }
+      }
+    }, '🔍 Check Syntax');
+    
+    syntaxRow.append(checkBtn, syntaxResult);
+    editorPanel.append(syntaxRow);
+    
+    // Delete button
+    const deleteBtn = el('button', {
+      className: 'btn danger',
+      onclick: () => {
+        if (confirm(`Delete expression "${selectedExpr.name}"?`)) {
+          const idx = expressions.indexOf(selectedExpr);
+          expressions.splice(idx, 1);
+          selectedExpr = null;
+          renderList();
+          renderEditor();
+        }
+      }
+    }, '🗑 Delete');
+    
+    editorPanel.append(deleteBtn);
+    
+    // Help text
+    const helpText = el('div', {style: 'margin-top:20px; padding:10px; background:#1a2030; border-radius:6px; font-size:12px; color:#8b949e;'});
+    helpText.innerHTML = `
+      <strong>Expression Syntax:</strong><br>
+      <code>temp = "AI:Tank" - 75</code> - Local variable<br>
+      <code>static.setpoint = 50</code> - Global variable<br>
+      <code>"AI:name"</code> - Signal reference<br>
+      <code>"PID:name".OUT</code> - PID property (OUT, U, SP, PV, ERR)<br>
+      <code>IF x > 5 THEN 10 ELSE 0</code> - Conditional<br>
+      <code>sin(), cos(), max(), min(), sqrt(), abs()</code> - Functions<br>
+      <code>time</code> - Current time in seconds<br>
+      <strong>Last line = return value</strong>
+    `;
+    editorPanel.append(helpText);
+  }
+  
+  container.append(listPanel, editorPanel);
+  
+  // Global variables viewer
+  const globalsSection = el('div', {style: 'margin-top:20px; padding:15px; background:#1a2030; border-radius:6px;'});
+  const globalsTitle = el('div', {style: 'font-weight:bold; margin-bottom:10px;'}, 'Global Variables (static.*)');
+  const globalsTable = el('table', {className: 'form', style: 'width:100%;'});
+  
+  async function refreshGlobals() {
+    try {
+      const resp = await fetch('/api/expressions/globals');
+      const data = await resp.json();
+      
+      globalsTable.innerHTML = '';
+      const thead = el('thead');
+      thead.append(el('tr', {}, [
+        el('th', {}, 'Name'),
+        el('th', {}, 'Value'),
+        el('th', {}, 'Actions')
+      ]));
+      globalsTable.append(thead);
+      
+      const tbody = el('tbody');
+      const globals = data.globals || {};
+      
+      if (Object.keys(globals).length === 0) {
+        tbody.append(el('tr', {}, [
+          el('td', {colspan: 3, style: 'text-align:center; color:#666;'}, 'No global variables yet')
+        ]));
+      } else {
+        Object.entries(globals).forEach(([name, value]) => {
+          const tr = el('tr', {}, [
+            el('td', {}, `static.${name}`),
+            el('td', {}, value.toFixed(4)),
+            el('td', {}, el('button', {
+              className: 'btn danger',
+              onclick: async () => {
+                if (confirm(`Delete static.${name}?`)) {
+                  await fetch('/api/expressions/globals', {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: name})
+                  });
+                  refreshGlobals();
+                }
+              }
+            }, '×'))
+          ]);
+          tbody.append(tr);
+        });
+      }
+      
+      globalsTable.append(tbody);
+    } catch (e) {
+      console.error('Failed to load globals:', e);
+    }
+  }
+  
+  const clearGlobalsBtn = el('button', {
+    className: 'btn danger',
+    onclick: async () => {
+      if (confirm('Clear ALL global variables?')) {
+        await fetch('/api/expressions/globals/clear', {method: 'POST'});
+        refreshGlobals();
+      }
+    },
+    style: 'margin-top:10px;'
+  }, 'Clear All Globals');
+  
+  globalsSection.append(globalsTitle, globalsTable, clearGlobalsBtn);
+  
+  // Initial render
+  renderList();
+  renderEditor();
+  refreshGlobals();
+  
+  // Save button
+  const saveBtn = el('button', {
+    className: 'btn',
+    onclick: async () => {
+      try {
+        const resp = await fetch('/api/expressions', {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({expressions: expressions})
+        });
+        const result = await resp.json();
+        if (result.ok) {
+          alert('Expressions saved!');
+        } else {
+          alert('Failed to save: ' + result.error);
+        }
+      } catch (e) {
+        alert('Failed to save: ' + e.message);
+      }
+    }
+  }, '💾 Save');
+  
+  root.append(title, container, globalsSection, el('div', {style: 'margin-top:20px;'}, saveBtn));
+  showModal(root);
 }
 
 /* ----------------------------- form bits -------------------------------- */

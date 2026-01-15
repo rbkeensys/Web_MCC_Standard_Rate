@@ -191,7 +191,7 @@
       "input_b": {
         "kind": "value",
         "index": 1,
-        "value": 31.82
+        "value": 32.82
       },
       "output_true": null,
       "output_false": null,
@@ -247,7 +247,7 @@
       "input_b": {
         "kind": "value",
         "index": 1,
-        "value": 50.0
+        "value": 55.0
       },
       "output_true": {
         "kind": "value",
@@ -350,7 +350,7 @@
     },
     {
       "enabled": true,
-      "name": "M12:Low Press - Set Low Flow",
+      "name": "M12:Low Press - Low Flow or Norm",
       "operation": "if_lt",
       "inputs": [
         {
@@ -367,7 +367,7 @@
       "input_b": {
         "kind": "value",
         "index": 1,
-        "value": 95.0
+        "value": 145.0
       },
       "output_true": {
         "kind": "math",
@@ -388,7 +388,7 @@
     },
     {
       "enabled": true,
-      "name": "M13:Low Low Press - Flow Stop",
+      "name": "M13:Low Low P - Force Min Flow or Normal",
       "operation": "if_lt",
       "inputs": [
         {
@@ -405,12 +405,12 @@
       "input_b": {
         "kind": "value",
         "index": 1,
-        "value": 90.0
+        "value": 140.0
       },
       "output_true": {
         "kind": "value",
         "index": 1,
-        "value": 0.035
+        "value": 0.09
       },
       "output_false": {
         "kind": "pid_u",
@@ -448,11 +448,49 @@
       "output_true": {
         "kind": "value",
         "index": 1,
-        "value": 0.2
+        "value": 0.15
       },
       "output_false": {
         "kind": "math",
         "index": 13,
+        "value": 0.0
+      },
+      "filter_hz": null,
+      "has_output": false,
+      "output_type": null,
+      "output_channel": null,
+      "output_min": null,
+      "output_max": null
+    },
+    {
+      "enabled": true,
+      "name": "15:Heater OFF, Low Low Level",
+      "operation": "if_gt",
+      "inputs": [
+        {
+          "kind": "ai",
+          "index": 0,
+          "value": null
+        }
+      ],
+      "input_a": {
+        "kind": "math",
+        "index": 7,
+        "value": null
+      },
+      "input_b": {
+        "kind": "value",
+        "index": 1,
+        "value": 38.0
+      },
+      "output_true": {
+        "kind": "value",
+        "index": 0,
+        "value": 1.0
+      },
+      "output_false": {
+        "kind": "value",
+        "index": 0,
         "value": 0.0
       },
       "filter_hz": null,
