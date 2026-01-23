@@ -170,6 +170,14 @@ def _app_js():
 def _styles_css():
     return FileResponse(str(WEB_DIR / "styles.css"))
 
+@app.get("/EXPRESSION_REFERENCE.md")
+def _expression_reference():
+    ref_file = WEB_DIR / "EXPRESSION_REFERENCE.md"
+    if ref_file.exists():
+        return FileResponse(str(ref_file), media_type="text/markdown")
+    # Fallback if file doesn't exist
+    return {"error": "EXPRESSION_REFERENCE.md not found in web directory"}
+
 @app.get("/favicon.ico")
 def _favicon():
     ico = WEB_DIR / "favicon.ico"
@@ -311,6 +319,9 @@ def load_math():
 expr_mgr = ExpressionManager(filepath=str(CFG_DIR / "expressions.json"))
 log.info(f"[EXPR] Loaded {len(expr_mgr.expressions)} expressions")
 
+# Button variables storage (synchronized from frontend)
+button_vars: Dict[str, float] = {}
+
 load_math()
 
 # AO Enable Gate Tracking
@@ -444,6 +455,8 @@ async def acq_loop():
     # PID telemetry from previous cycle (for cascade control)
     last_pid_telemetry: List[Dict] = []
     math_tel: List[Dict] = []  # Math telemetry for current cycle
+    last_expr_outputs: List[float] = []  # Expression outputs from previous cycle
+    expr_tel: List[Dict] = []  # Expression telemetry for current cycle
 
     try:
         while True:
@@ -537,8 +550,8 @@ async def acq_loop():
             le_tel = le_mgr.get_telemetry()
 
             # --- PIDs (may drive DO/AO) ---
-            # Pass DO/LE/Math state so PIDs can use them
-            # Pass previous cycle's PID telemetry for cascade control (pid source)
+            # Pass DO/LE/Math/Expr state so PIDs can use them
+            # Pass previous cycle's PID and Expr telemetry for inputs/gates
             telemetry = pid_mgr.step(
                 ai_vals=ai_scaled,
                 tc_vals=tc_vals,
@@ -547,6 +560,7 @@ async def acq_loop():
                 le_state=le_tel,  # Now has updated LE state with math
                 pid_prev=last_pid_telemetry,
                 math_outputs=[m.get("output", 0.0) for m in math_tel],
+                expr_outputs=last_expr_outputs,  # Previous cycle's expression outputs
                 sample_rate_hz=acq_rate_hz
             )
             
@@ -562,6 +576,55 @@ async def acq_loop():
                 "tc": tc_vals,
                 "pid": telemetry,
                 "math": math_tel  # Keep math available
+            })
+            le_tel = le_mgr.get_telemetry()
+
+            # --- Expressions ---
+            # Evaluate expressions after everything else so they can see all signal states
+            try:
+                tc_count = len(app_cfg.thermocouples) if app_cfg.thermocouples else 0
+                expr_tel = expr_mgr.evaluate_all({
+                    "ai": ai_scaled,
+                    "ao": ao,
+                    "do": do,
+                    "tc": tc_vals,
+                    "pid": telemetry,
+                    "math": math_tel,
+                    "le": le_tel,
+                    "expr": last_expr_outputs,  # Previous cycle expressions (avoid circular dependency)
+                    "buttonVars": button_vars,  # Button variables from frontend
+                    "ai_list": [{"name": ch.name} for ch in app_cfg.analogs],
+                    "ao_list": [{"name": ch.name} for ch in app_cfg.analogOutputs],
+                    "tc_list": [{"name": ch.name} for ch in app_cfg.thermocouples],
+                    "do_list": [{"name": ch.name} for ch in app_cfg.digitalOutputs],
+                    "pid_list": [{"name": loop.name} for loop in pid_mgr.meta],
+                    "math_list": [{"name": op.name} for op in math_mgr.operators],
+                    "le_list": [{"name": elem.name} for elem in le_mgr.elements],
+                    "expr_list": [{"name": expr.name} for expr in expr_mgr.expressions]
+                })
+                
+                # Extract expr outputs for use in PID gates and other systems
+                expr_outputs = [e.get("output", 0.0) for e in expr_tel]
+                
+                # Store for next cycle (PIDs will use these as gates/inputs)
+                last_expr_outputs = expr_outputs
+            except Exception as e:
+                print(f"[EXPR] Evaluation error: {e}")
+                import traceback
+                traceback.print_exc()
+                # Keep previous values on error
+                expr_outputs = last_expr_outputs if last_expr_outputs else [0.0] * len(expr_mgr.expressions)
+            
+            # --- Logic Elements (Third pass - can now see expressions) ---
+            # Re-evaluate LEs one more time so they can use expression outputs
+            le_outputs = le_mgr.evaluate_all({
+                "ai": ai_scaled,
+                "ao": ao,
+                "do": do,
+                "tc": tc_vals,
+                "pid": telemetry,
+                "math": math_tel,
+                "expr": expr_outputs  # Now LEs can see current cycle expressions
             })
             le_tel = le_mgr.get_telemetry()
 
@@ -583,6 +646,12 @@ async def acq_loop():
                     elif ao_cfg.enable_kind == "le":
                         if ao_cfg.enable_index < len(le_tel):
                             enable_signal = le_tel[ao_cfg.enable_index].get("output", False)
+                    elif ao_cfg.enable_kind == "math":
+                        if ao_cfg.enable_index < len(math_tel):
+                            enable_signal = math_tel[ao_cfg.enable_index].get("output", 0.0) >= 1.0
+                    elif ao_cfg.enable_kind == "expr":
+                        if ao_cfg.enable_index < len(expr_outputs):
+                            enable_signal = expr_outputs[ao_cfg.enable_index] >= 1.0
                     
                     # Check for state transitions
                     was_enabled = ao_last_gate_state[i] if i < len(ao_last_gate_state) else True
@@ -677,6 +746,7 @@ async def acq_loop():
                 "motors": clean_for_json(motor_status),
                 "le": clean_for_json(le_tel),
                 "math": clean_for_json(math_tel),
+                "expr": clean_for_json(expr_tel),
             }
 
             ticks += 1
@@ -827,6 +897,19 @@ def clear_expression_globals():
     """Clear all global variables"""
     expr_global_vars.clear()
     return {"ok": True}
+
+@app.post("/api/button_vars")
+def update_button_vars(body: dict):
+    """Update button variable states from frontend"""
+    global button_vars
+    vars_dict = body.get('vars', {})
+    button_vars.update(vars_dict)
+    return {"ok": True}
+
+@app.get("/api/button_vars")
+def get_button_vars():
+    """Get current button variable states"""
+    return {"vars": button_vars}
 
 @app.get("/api/script")
 def get_script():
@@ -1078,7 +1161,7 @@ async def zero_ai_channels(req: dict):
         await asyncio.sleep(1.0 / sample_rate)
     
     # Calculate averages and new offsets
-    offsets = {}
+    offsets_list = []
     for ch in channels:
         if not samples[ch]:
             return {"ok": False, "error": f"No valid samples for channel {ch}"}
@@ -1090,19 +1173,19 @@ async def zero_ai_channels(req: dict):
         new_offset = old_offset - (avg - balance_to_value)
         
         app_cfg.analogs[ch].offset = new_offset
-        offsets[ch] = {
-            "old_offset": old_offset,
-            "new_offset": new_offset,
-            "average": avg,
-            "balance_to": balance_to_value
-        }
+        offsets_list.append({
+            "channel": ch,
+            "old": old_offset,
+            "new": new_offset,
+            "avg": avg
+        })
         
         print(f"[Zero AI] CH{ch}: avg={avg:.6f}, old_offset={old_offset:.6f}, new_offset={new_offset:.6f}")
     
     # Save config
     CFG_PATH.write_text(json.dumps(app_cfg.model_dump(), indent=2))
     
-    return {"ok": True, "offsets": offsets}
+    return {"ok": True, "offsets": offsets_list}
 
 # ---------- REST: logs ----------
 @app.get("/api/logs")

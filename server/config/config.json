@@ -14,7 +14,7 @@
     {
       "name": "DP Flow 1",
       "slope": 50.0,
-      "offset": -24.6484375,
+      "offset": -25.1961669921875,
       "cutoffHz": 0.1,
       "units": "psi",
       "include": true
@@ -22,7 +22,7 @@
     {
       "name": "DP Flow 2",
       "slope": 50.0,
-      "offset": -25.177459716796875,
+      "offset": -25.463150024414062,
       "cutoffHz": 0.1,
       "units": "psi",
       "include": true
@@ -30,7 +30,7 @@
     {
       "name": "DP Level 1",
       "slope": 50.0,
-      "offset": -24.48577880859375,
+      "offset": -24.815628051757812,
       "cutoffHz": 0.1,
       "units": "psi",
       "include": true
@@ -38,7 +38,7 @@
     {
       "name": "DP Level 2",
       "slope": 50.0,
-      "offset": -25.169830322265625,
+      "offset": -25.013717651367188,
       "cutoffHz": 0.1,
       "units": "psi",
       "include": true
@@ -78,7 +78,7 @@
   ],
   "digitalOutputs": [
     {
-      "name": "Inlet Valve",
+      "name": "PumpButton",
       "normallyOpen": false,
       "momentary": false,
       "actuationTime": 0.0,
@@ -86,7 +86,7 @@
       "logicElement": null
     },
     {
-      "name": "Outlet Valve",
+      "name": "DO1",
       "normallyOpen": false,
       "momentary": false,
       "actuationTime": 0.0,
@@ -94,7 +94,7 @@
       "logicElement": null
     },
     {
-      "name": "Heater",
+      "name": "HeaterRelay",
       "normallyOpen": false,
       "momentary": false,
       "actuationTime": 0.0,
@@ -134,7 +134,7 @@
       "logicElement": null
     },
     {
-      "name": "Heat_EN",
+      "name": "Heat_Button",
       "normallyOpen": false,
       "momentary": false,
       "actuationTime": 0.0,

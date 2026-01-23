@@ -1,15 +1,20 @@
 """
-Expression Engine for MCC DAQ System
+Expression Engine for MCC DAQ System - VERSION 2.0
 
 Supports:
 - C-style operator precedence
 - Signal references: "AI:name", "PID:name".OUT, etc.
 - Local variables: temp = value
 - Global variables: static.name = value
+- Button variables: buttonVars.name (read-only from frontend)
 - Math functions: sin(), cos(), max(), min(), etc.
-- IF/THEN/ELSE conditionals
+- IF/THEN/ELSE/ENDIF conditionals
 - Boolean logic: AND, OR, NOT
 - Comparisons: <, <=, >, >=, ==, !=
+
+VERSION 2.0 Changes:
+- Added buttonVars support for reading frontend button states
+- buttonVars are read-only in expressions (set by UI buttons)
 """
 
 import re
@@ -46,6 +51,7 @@ class Token:
     type: str  # NUMBER, STRING, IDENT, OPERATOR, etc.
     value: Any
     pos: int = 0
+    line: int = 0  # Line number (0-indexed)
 
 
 class Lexer:
@@ -57,6 +63,7 @@ class Lexer:
         ('NUMBER', r'\d+\.?\d*'),
         ('STRING', r'"([^"]+)"'),  # Signal references like "AI:Tank"
         ('STATIC', r'static\.([a-zA-Z_][a-zA-Z0-9_]*)'),
+        ('BUTTONVAR', r'buttonVars\.([a-zA-Z_][a-zA-Z0-9_]*)'),  # Button variables
         ('IDENT', r'[a-zA-Z_][a-zA-Z0-9_]*'),
         ('DOTPROP', r'\.([A-Z_]+)'),  # Property access like .OUT, .SP
         ('COMPARE', r'(==|!=|<=|>=|<|>)'),
@@ -76,10 +83,23 @@ class Lexer:
         self.text = text
         self.pos = 0
         self.tokens: List[Token] = []
+        self.line = 0  # Current line number
         
     def tokenize(self) -> List[Token]:
         """Convert text to tokens"""
         self.tokens = []
+        
+        # Count line numbers as we go
+        line_starts = [0]
+        for i, ch in enumerate(self.text):
+            if ch == '\n':
+                line_starts.append(i + 1)
+        
+        def pos_to_line(pos):
+            for line_num, start in enumerate(line_starts):
+                if pos < start:
+                    return line_num - 1
+            return len(line_starts) - 1
         
         while self.pos < len(self.text):
             match_found = False
@@ -97,6 +117,9 @@ class Lexer:
                     elif token_type == 'STATIC':
                         # Extract variable name after "static."
                         value = match.group(1)
+                    elif token_type == 'BUTTONVAR':
+                        # Extract variable name after "buttonVars."
+                        value = match.group(1)
                     elif token_type == 'DOTPROP':
                         # Extract property name after "."
                         value = match.group(1)
@@ -106,7 +129,7 @@ class Lexer:
                         match_found = True
                         break
                     
-                    self.tokens.append(Token(token_type, value, self.pos))
+                    self.tokens.append(Token(token_type, value, self.pos, pos_to_line(self.pos)))
                     self.pos = match.end()
                     match_found = True
                     break
@@ -123,6 +146,8 @@ class ASTNode:
     type: str
     value: Any = None
     children: List['ASTNode'] = field(default_factory=list)
+    line_start: int = 0  # Starting line number (0-indexed)
+    line_end: int = 0    # Ending line number (0-indexed)
     
     def __repr__(self):
         if not self.children:
@@ -136,6 +161,15 @@ class Parser:
     def __init__(self, tokens: List[Token]):
         self.tokens = tokens
         self.pos = 0
+        self.current_line = 0  # Track current line
+    
+    def make_node(self, type: str, value: Any = None, children: List[ASTNode] = None) -> ASTNode:
+        """Create an ASTNode with line tracking from current token"""
+        line = self.current_line
+        node = ASTNode(type, value, children or [])
+        node.line_start = line
+        node.line_end = line
+        return node
     
     def current(self) -> Optional[Token]:
         if self.pos < len(self.tokens):
@@ -150,6 +184,8 @@ class Parser:
     
     def advance(self) -> Token:
         token = self.current()
+        if token:
+            self.current_line = token.line
         self.pos += 1
         return token
     
@@ -182,7 +218,7 @@ class Parser:
                 name = self.advance().value
                 self.advance()  # consume =
                 expr = self.parse_or()
-                return ASTNode('ASSIGN', name, [expr])
+                return self.make_node('ASSIGN', name, [expr])
         
         elif token and token.type == 'STATIC':
             # Global assignment: static.name = expr
@@ -191,7 +227,7 @@ class Parser:
                 name = self.advance().value
                 self.advance()  # consume =
                 expr = self.parse_or()
-                return ASTNode('STATIC_ASSIGN', name, [expr])
+                return self.make_node('STATIC_ASSIGN', name, [expr])
         
         elif token and token.type == 'STRING':
             # Signal reference assignment: "DO:name" = expr or "AO:name" = expr
@@ -207,9 +243,9 @@ class Parser:
                     signal_type = signal_type.upper()
                     
                     if signal_type == 'DO':
-                        return ASTNode('DO_ASSIGN', signal_name, [expr])
+                        return self.make_node('DO_ASSIGN', signal_name, [expr])
                     elif signal_type == 'AO':
-                        return ASTNode('AO_ASSIGN', signal_name, [expr])
+                        return self.make_node('AO_ASSIGN', signal_name, [expr])
         
         # Not an assignment, just an expression
         return self.parse_or()
@@ -221,7 +257,7 @@ class Parser:
         while self.current() and self.current().type == 'IDENT' and self.current().value.upper() == 'OR':
             self.advance()
             right = self.parse_and()
-            left = ASTNode('OR', None, [left, right])
+            left = self.make_node('OR', None, [left, right])
         
         return left
     
@@ -232,7 +268,7 @@ class Parser:
         while self.current() and self.current().type == 'IDENT' and self.current().value.upper() == 'AND':
             self.advance()
             right = self.parse_comparison()
-            left = ASTNode('AND', None, [left, right])
+            left = self.make_node('AND', None, [left, right])
         
         return left
     
@@ -244,7 +280,7 @@ class Parser:
         if token and token.type == 'COMPARE':
             op = self.advance().value
             right = self.parse_additive()
-            return ASTNode('COMPARE', op, [left, right])
+            return self.make_node('COMPARE', op, [left, right])
         
         return left
     
@@ -255,7 +291,7 @@ class Parser:
         while self.current() and self.current().type in ('PLUS', 'MINUS'):
             op = self.advance().type
             right = self.parse_multiplicative()
-            left = ASTNode(op, None, [left, right])
+            left = self.make_node(op, None, [left, right])
         
         return left
     
@@ -266,7 +302,7 @@ class Parser:
         while self.current() and self.current().type in ('MULT', 'DIV', 'MOD'):
             op = self.advance().type
             right = self.parse_unary()
-            left = ASTNode(op, None, [left, right])
+            left = self.make_node(op, None, [left, right])
         
         return left
     
@@ -277,12 +313,12 @@ class Parser:
         if token and token.type == 'MINUS':
             self.advance()
             expr = self.parse_unary()
-            return ASTNode('NEGATE', None, [expr])
+            return self.make_node('NEGATE', None, [expr])
         
         if token and token.type == 'IDENT' and token.value.upper() == 'NOT':
             self.advance()
             expr = self.parse_unary()
-            return ASTNode('NOT', None, [expr])
+            return self.make_node('NOT', None, [expr])
         
         return self.parse_primary()
     
@@ -296,7 +332,7 @@ class Parser:
         # Number literal
         if token.type == 'NUMBER':
             value = float(self.advance().value)
-            return ASTNode('NUMBER', value)
+            return self.make_node('NUMBER', value)
         
         # Signal reference: "AI:Tank"
         if token.type == 'STRING':
@@ -305,14 +341,19 @@ class Parser:
             # Check for property access: "PID:Motor".OUT
             if self.current() and self.current().type == 'DOTPROP':
                 prop = self.advance().value
-                return ASTNode('SIGNAL_PROP', (signal_ref, prop))
+                return self.make_node('SIGNAL_PROP', (signal_ref, prop))
             
-            return ASTNode('SIGNAL', signal_ref)
+            return self.make_node('SIGNAL', signal_ref)
         
         # Global variable: static.name
         if token.type == 'STATIC':
             name = self.advance().value
-            return ASTNode('STATIC_VAR', name)
+            return self.make_node('STATIC_VAR', name)
+        
+        # Button variable: buttonVars.name (read-only)
+        if token.type == 'BUTTONVAR':
+            name = self.advance().value
+            return self.make_node('BUTTONVAR', name)
         
         # Identifier: could be variable, function, or keyword
         if token.type == 'IDENT':
@@ -327,7 +368,7 @@ class Parser:
                 return self.parse_function_call(name)
             
             # Just a variable reference
-            return ASTNode('VAR', name)
+            return self.make_node('VAR', name)
         
         # Parenthesized expression
         if token.type == 'LPAREN':
@@ -339,7 +380,53 @@ class Parser:
         raise SyntaxError(f"Unexpected token: {token.type} '{token.value}'")
     
     def parse_if(self) -> ASTNode:
-        """Parse IF condition THEN expr [ELSE expr]"""
+        """
+        Parse IF statement - two styles supported:
+        1. Inline: IF cond THEN expr ELSE expr (no ENDIF needed)
+        2. Block: IF cond THEN ... ELSE ... ENDIF (ENDIF required)
+        """
+        result = self.parse_if_without_endif()
+        
+        # Check for ENDIF (only for top-level IF, not ELSE IF)
+        token = self.current()
+        is_block_style = self.is_block_if(result)
+        
+        if token and token.type == 'IDENT' and token.value.upper() == 'ENDIF':
+            self.advance()  # consume ENDIF
+        elif is_block_style:
+            # Block-style IF requires ENDIF
+            raise SyntaxError(f"Expected ENDIF to close multi-line IF statement, got {token.value if token else 'EOF'}")
+        # else: inline-style IF without ENDIF is OK
+        
+        return result
+    
+    def is_block_if(self, if_node: ASTNode) -> bool:
+        """Check if an IF node is block-style (has BLOCK children)"""
+        if if_node.type != 'IF':
+            return False
+        
+        then_expr = if_node.children[1]
+        else_expr = if_node.children[2]
+        
+        # Check if THEN branch is a BLOCK
+        if then_expr.type == 'BLOCK':
+            return True
+        
+        # Check if ELSE branch is a BLOCK
+        if else_expr.type == 'BLOCK':
+            return True
+        
+        # If ELSE branch is another IF (ELSE IF), recursively check it
+        if else_expr.type == 'IF':
+            return self.is_block_if(else_expr)
+        
+        return False
+    
+    def parse_if_without_endif(self) -> ASTNode:
+        """
+        Parse IF without consuming ENDIF
+        Used for ELSE IF chains where ENDIF is shared
+        """
         condition = self.parse_or()
         
         # Expect THEN
@@ -348,20 +435,66 @@ class Parser:
             raise SyntaxError("Expected THEN after IF condition")
         self.advance()
         
-        # THEN clause - allow assignment or expression
-        then_expr = self.parse_statement()
+        # Try to parse as inline IF first (single expression)
+        # Inline IF: IF cond THEN expr [ELSE expr] (no ENDIF)
+        # Block IF: IF cond THEN ... [ELSE ...] ENDIF (with ENDIF)
         
-        # ELSE is optional - if missing, default to 0
+        # Parse THEN statements
+        then_stmts = []
+        while self.current():
+            token = self.current()
+            # Stop on ELSE or ENDIF
+            if token.type == 'IDENT' and token.value.upper() in ('ELSE', 'ENDIF'):
+                break
+            
+            then_stmts.append(self.parse_statement())
+        
+        # Wrap multiple statements in a BLOCK node
+        if len(then_stmts) == 0:
+            raise SyntaxError("Expected statement after THEN")
+        elif len(then_stmts) == 1:
+            then_expr = then_stmts[0]
+        else:
+            then_expr = ASTNode('BLOCK', None, then_stmts)
+        
+        # Check for ELSE clause
         token = self.current()
+        has_else = False
         if token and token.type == 'IDENT' and token.value.upper() == 'ELSE':
+            has_else = True
             self.advance()
-            # ELSE clause - allow assignment or expression
-            else_expr = self.parse_statement()
+            
+            # Check for ELSE IF (another IF statement)
+            token = self.current()
+            if token and token.type == 'IDENT' and token.value.upper() == 'IF':
+                self.advance()  # consume IF
+                # ELSE IF is part of the same IF chain, so don't expect separate ENDIF
+                # Just parse the condition and branches, but not the closing ENDIF
+                else_expr = self.parse_if_without_endif()
+            else:
+                # Regular ELSE - parse statements until ENDIF
+                else_stmts = []
+                while self.current():
+                    token = self.current()
+                    # Stop on ENDIF
+                    if token.type == 'IDENT' and token.value.upper() == 'ENDIF':
+                        break
+                    
+                    else_stmts.append(self.parse_statement())
+                
+                # Wrap multiple statements in a BLOCK node
+                if len(else_stmts) == 0:
+                    raise SyntaxError("Expected statement after ELSE")
+                elif len(else_stmts) == 1:
+                    else_expr = else_stmts[0]
+                else:
+                    else_expr = ASTNode('BLOCK', None, else_stmts)
         else:
             # No ELSE clause - default to 0
             else_expr = ASTNode('NUMBER', 0.0)
         
-        return ASTNode('IF', None, [condition, then_expr, else_expr])
+        # Don't consume ENDIF here - let parse_if() handle it for the outermost IF
+        return self.make_node('IF', None, [condition, then_expr, else_expr])
     
     def parse_function_call(self, name: str) -> ASTNode:
         """Parse function call: func(arg1, arg2, ...)"""
@@ -377,7 +510,7 @@ class Parser:
         
         self.expect('RPAREN')
         
-        return ASTNode('CALL', name, args)
+        return self.make_node('CALL', name, args)
 
 
 class Evaluator:
@@ -403,6 +536,10 @@ class Evaluator:
         self.result = 0.0
         # Track hardware writes that need to be applied
         self.hardware_writes: List[Dict[str, Any]] = []
+        # Track which IF branches were taken (line_num -> 'then' or 'else')
+        self.branch_paths: Dict[int, str] = {}
+        # Track which lines actually executed
+        self.executed_lines: set[int] = set()
     
     def evaluate(self, statements: List[ASTNode]) -> float:
         """Evaluate list of statements, return last value"""
@@ -412,6 +549,9 @@ class Evaluator:
     
     def eval_node(self, node: ASTNode) -> float:
         """Evaluate single AST node"""
+        
+        # DON'T mark lines here - do it selectively for each node type
+        # This prevents marking lines in branches that don't execute
         
         if node.type == 'NUMBER':
             return float(node.value)
@@ -432,16 +572,27 @@ class Evaluator:
             # Global variable lookup
             return global_vars.get(node.value, 0.0)
         
+        elif node.type == 'BUTTONVAR':
+            # Button variable lookup (read-only from frontend)
+            button_vars = self.signal_state.get('buttonVars', {})
+            return float(button_vars.get(node.value, 0.0))
+        
         elif node.type == 'ASSIGN':
             # Local assignment
             value = self.eval_node(node.children[0])
             self.local_vars[node.value] = value
+            # Mark this assignment line as executed
+            for line_num in range(node.line_start, node.line_end + 1):
+                self.executed_lines.add(line_num)
             return value
         
         elif node.type == 'STATIC_ASSIGN':
             # Global assignment
             value = self.eval_node(node.children[0])
             global_vars.set(node.value, value)
+            # Mark this assignment line as executed
+            for line_num in range(node.line_start, node.line_end + 1):
+                self.executed_lines.add(line_num)
             return value
         
         elif node.type == 'DO_ASSIGN':
@@ -542,11 +693,22 @@ class Evaluator:
             value = self.eval_node(node.children[0])
             return 1.0 if value == 0.0 else 0.0
         
+        elif node.type == 'BLOCK':
+            # Evaluate multiple statements in sequence, return last value
+            result = 0.0
+            for stmt in node.children:
+                result = self.eval_node(stmt)
+            return result
+        
         elif node.type == 'IF':
             condition = self.eval_node(node.children[0])
+            # Track which branch was taken (store by node position as a simple key)
+            if_key = id(node)  # Unique ID for this IF node
             if condition != 0.0:
+                self.branch_paths[if_key] = 'then'
                 return self.eval_node(node.children[1])  # THEN
             else:
+                self.branch_paths[if_key] = 'else'
                 return self.eval_node(node.children[2])  # ELSE
         
         elif node.type == 'CALL':
@@ -655,36 +817,36 @@ class Evaluator:
         return 0.0
 
 
-def evaluate_expression(expr_text: str, signal_state: Dict[str, Any]) -> Tuple[float, Dict[str, float], List[Dict]]:
+def evaluate_expression(expr_text: str, signal_state: Dict[str, Any]) -> Tuple[float, Dict[str, float], List[Dict], Dict[int, str], set]:
     """
-    Evaluate an expression and return (result, local_vars, hardware_writes)
+    Evaluate an expression and return (result, local_vars, hardware_writes, branch_paths, executed_lines)
     
     Args:
         expr_text: Expression source code
         signal_state: Dictionary with signal values and metadata
     
     Returns:
-        (result, local_vars, hardware_writes) tuple
+        (result, local_vars, hardware_writes, branch_paths, executed_lines) tuple
         hardware_writes is a list of dicts with 'type', 'channel', 'value'
-    """
-    try:
-        # Tokenize
-        lexer = Lexer(expr_text)
-        tokens = lexer.tokenize()
-        
-        # Parse
-        parser = Parser(tokens)
-        ast = parser.parse()
-        
-        # Evaluate
-        evaluator = Evaluator(signal_state)
-        result = evaluator.evaluate(ast)
-        
-        return result, evaluator.local_vars, evaluator.hardware_writes
+        branch_paths is a dict mapping IF node IDs to 'then' or 'else'
+        executed_lines is a set of line numbers (0-indexed) that executed
     
-    except Exception as e:
-        print(f"[EXPR] Error evaluating expression: {e}")
-        return 0.0, {}, []
+    Raises:
+        Exception: Any parsing or evaluation error
+    """
+    # Tokenize
+    lexer = Lexer(expr_text)
+    tokens = lexer.tokenize()
+    
+    # Parse
+    parser = Parser(tokens)
+    ast = parser.parse()
+    
+    # Evaluate
+    evaluator = Evaluator(signal_state)
+    result = evaluator.evaluate(ast)
+    
+    return result, evaluator.local_vars, evaluator.hardware_writes, evaluator.branch_paths, evaluator.executed_lines
 
 
 # Test function

@@ -4,281 +4,24 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6ee747c5-542f-43af-b33e-a97c54c29c34" name="Changes" comment="Working enough for nested control loops, added PID execution rate, added variable setpoint and min/max controls in PID's, cleaned up some input selection in editors and elements.   TODO: Multi input (3 or more) math and logic elements.  Playback needs to write to bar graphs too.">
-      <change afterPath="$PROJECT_DIR$/server/logs/20251118_173145/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251118_173337/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251118_173432/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251201_163428/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251201_164759/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_123253/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_144930/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_145000/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_145012/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_151253/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_151839/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_152217/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_153730/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_154104/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_160922/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_161034/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_162133/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_162207/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_162535/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_163000/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_164535/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_164832/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251203_171101/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251204_105752/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251204_112624/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251204_112843/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251204_114443/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251204_115331/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251204_115642/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251204_115752/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251204_115956/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251204_120849/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251204_120931/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251204_121401/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251204_122057/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251204_122320/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251204_123043/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251205_161636/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251205_165317/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251205_170800/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251205_171040/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251205_171438/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251208_090845/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251208_095833/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251210_135506/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251210_135944/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251210_141149/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251210_141217/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251210_141943/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251210_150445/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251210_151629/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251211_082724/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251211_153107/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251211_170542/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251216_081859/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251217_085756/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251217_091433/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251217_113233/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251217_113311/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251217_113553/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251217_114137/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251217_114425/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251217_114922/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251217_115338/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251217_120314/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251217_123023/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_082051/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_085457/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_085719/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_091237/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_091624/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_091922/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_093016/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_120223/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_122251/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_122824/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_122903/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_124320/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_124358/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_144324/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_144353/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_144653/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_144709/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_144710/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_150109/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251218_151256/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251222_114705/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251222_114936/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251222_160028/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251222_161241/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251222_161920/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251222_162322/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251222_162410/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251222_162415/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251222_162417/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251222_162419/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251222_162607/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251222_162903/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251222_170155/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251223_094439/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251223_095012/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251223_095029/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251223_102156/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251223_103507/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251223_121947/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251223_151105/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_083949/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_084123/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_084616/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_104619/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_104751/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_105051/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_113008/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_113028/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_113129/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_120252/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_121051/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_142625/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_142627/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_144108/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_144903/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_144908/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251224_145427/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251229_111351/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251229_111500/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251229_111634/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251229_111821/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251229_112235/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251229_112249/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251229_112310/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251229_112448/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251229_112510/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251229_113948/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251229_114447/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251229_120336/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251229_122228/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251229_172210/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251230_080735/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251230_080805/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251230_080831/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251230_083853/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251230_083908/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251230_114642/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251230_140058/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251230_141044/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251230_141525/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251231_102140/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251231_102242/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251231_102334/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251231_172214/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251231_172225/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251231_172254/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251231_172312/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251231_172350/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251231_172442/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251231_172600/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251231_172708/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251231_172823/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251231_172835/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20251231_173024/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260101_113127/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260101_113205/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260101_144853/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260102_165449/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_090605/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_105222/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_105356/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_105555/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_105933/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_110152/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_110227/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_111506/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_111620/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_111715/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_111908/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_111943/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_112037/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_112401/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_112418/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_112509/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_113823/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_114741/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_122025/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_135946/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_140254/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_140929/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_141506/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_141848/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_142944/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_143825/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_144658/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_145243/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_145306/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_145334/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_145957/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_150209/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_150847/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_151421/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_151719/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_152248/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_152430/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_153305/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_153942/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_155050/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_155237/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_155422/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_160056/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_162209/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_162900/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260105_163904/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260106_094755/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260106_100201/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260106_100316/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260106_101240/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260106_101638/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260106_101929/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260106_102305/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260106_102330/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260106_102419/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260106_102809/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260106_103452/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260106_103502/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260106_124811/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260106_140208/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260106_152327/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260107_172217/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260107_172246/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260107_172339/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260107_172813/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260108_094648/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260108_142719/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260108_143000/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260108_143038/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260108_143653/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260108_144851/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260108_150406/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260108_152249/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260108_154927/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260108_165121/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_091704/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_094848/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_100722/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_105045/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_140726/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_141154/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_142132/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_142145/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_150937/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_152750/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_152859/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_152910/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_152915/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_152917/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_152919/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_152921/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_152922/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260109_152924/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260112_090111/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260112_090804/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260112_090828/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260112_091150/session.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server/logs/20260112_091429/session.csv" afterDir="false" />
+    <list default="true" id="6ee747c5-542f-43af-b33e-a97c54c29c34" name="Changes" comment="Adding expressions, big update.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Boiler Control.json" beforeDir="false" afterPath="$PROJECT_DIR$/Boiler Control.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/config/PID.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/PID.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/config/config.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/config.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/config/expressions.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/expressions.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/config/logic_elements.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/logic_elements.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/config/math_operators.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/math_operators.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/config/motor.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/motor.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/expr_engine.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/expr_engine.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/expr_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/expr_manager.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/logic_elements.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/logic_elements.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/math_ops.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/math_ops.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/pid_core.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/pid_core.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/server.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/server.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/web/app.js" beforeDir="false" afterPath="$PROJECT_DIR$/web/app.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/web/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/web/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/web/styles.css" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -313,25 +56,25 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python.MCC Web App.executor": "Run",
-    "Python.mcc_bridge.executor": "Run",
-    "Python.server.executor": "Run",
-    "Python.test_pid_var.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "ai.playground.ignore.import.keys.banner.in.settings": "true",
-    "git-widget-placeholder": "use__expressions",
-    "last_opened_file_path": "C:/Users/russ/Desktop/Web MCC App/Fast Bak1/Web-MCC-DAQ-and-Control Fast",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python.MCC Web App.executor&quot;: &quot;Run&quot;,
+    &quot;Python.mcc_bridge.executor&quot;: &quot;Run&quot;,
+    &quot;Python.server.executor&quot;: &quot;Run&quot;,
+    &quot;Python.test_pid_var.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;ai.playground.ignore.import.keys.banner.in.settings&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;use__expressions&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/russ/Desktop/Web MCC App/Fast Bak1/Web-MCC-DAQ-and-Control Fast&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RunManager">
     <configuration name="MCC Web App" type="PythonConfigurationType" factoryName="Python" temporary="true">
       <module name="Web-MCC-DAQ-and-Control Fast" />
@@ -367,7 +110,6 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-9b0f141eb926-JavaScript-PY-253.29346.142" />
         <option value="bundled-python-sdk-f2b7a9f6281b-6e1f45a539f7-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-253.29346.142" />
       </set>
     </attachedChunks>
@@ -393,7 +135,8 @@
       <workItem from="1767973671090" duration="7039000" />
       <workItem from="1768230041160" duration="23502000" />
       <workItem from="1768402776534" duration="11437000" />
-      <workItem from="1768488468454" duration="3437000" />
+      <workItem from="1768488468454" duration="17304000" />
+      <workItem from="1768919070192" duration="5000" />
     </task>
     <task id="LOCAL-00001" summary="Working standard rate, now has all editors working config, PID, script.  Scripts run too.">
       <option name="closed" value="true" />
@@ -571,7 +314,15 @@
       <option name="project" value="LOCAL" />
       <updated>1768403265457</updated>
     </task>
-    <option name="localTasksCounter" value="23" />
+    <task id="LOCAL-00023" summary="Adding expressions, big update.">
+      <option name="closed" value="true" />
+      <created>1768494723895</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1768494723895</updated>
+    </task>
+    <option name="localTasksCounter" value="24" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -607,7 +358,8 @@
     <MESSAGE value="Fixed some UI issues, new big TODO: Allowing long math inputs so we can combine many operators including logical and conditional.  This will be two phased." />
     <MESSAGE value="Added preliminary support for multi-input math/LE's.  Fixed some US issues and implementation of LE output.  TODO: add variable SP input to PID's.  Make Math and LE inputs to PID's use names instead of indexes." />
     <MESSAGE value="Working enough for nested control loops, added PID execution rate, added variable setpoint and min/max controls in PID's, cleaned up some input selection in editors and elements.   TODO: Multi input (3 or more) math and logic elements.  Playback needs to write to bar graphs too." />
-    <option name="LAST_COMMIT_MESSAGE" value="Working enough for nested control loops, added PID execution rate, added variable setpoint and min/max controls in PID's, cleaned up some input selection in editors and elements.   TODO: Multi input (3 or more) math and logic elements.  Playback needs to write to bar graphs too." />
+    <MESSAGE value="Adding expressions, big update." />
+    <option name="LAST_COMMIT_MESSAGE" value="Adding expressions, big update." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -621,6 +373,6 @@
     </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/server_py$MCC_Web_App.coverage" NAME="MCC Web App Coverage Results" MODIFIED="1768491942630" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
+    <SUITE FILE_PATH="coverage/server_py$MCC_Web_App.coverage" NAME="MCC Web App Coverage Results" MODIFIED="1768515275808" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
   </component>
 </project>

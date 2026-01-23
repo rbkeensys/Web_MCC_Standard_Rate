@@ -76,7 +76,7 @@ class ExpressionManager:
             
             try:
                 # Evaluate expression
-                result, local_vars, hw_writes = evaluate_expression(expr.expression, signal_state)
+                result, local_vars, hw_writes, branch_paths, executed_lines = evaluate_expression(expr.expression, signal_state)
                 
                 # Store output
                 self.outputs[i] = result
@@ -95,13 +95,21 @@ class ExpressionManager:
                         except Exception as e:
                             print(f"[EXPR] Failed to apply hardware write: {e}")
                 
+                # Convert branch_paths keys (node IDs) to line numbers for frontend
+                # This is a simple approach - we'll track by source line later
+                branch_info = {}
+                for node_id, path in branch_paths.items():
+                    branch_info[str(node_id)] = path  # Convert to string for JSON
+                
                 telemetry.append({
                     'name': expr.name,
                     'output': result,
                     'enabled': True,
                     'error': None,
                     'locals': local_vars,
-                    'hw_writes': hw_writes
+                    'hw_writes': hw_writes,
+                    'branches': branch_info,
+                    'executed_lines': list(executed_lines)  # Convert set to list for JSON
                 })
             
             except Exception as e:
@@ -117,7 +125,7 @@ class ExpressionManager:
         return telemetry
     
     def check_syntax(self, expression: str, signal_state: Optional[Dict] = None) -> Dict:
-        """Check expression syntax and return result"""
+        """Check expression syntax, validate signal references, and return result"""
         if signal_state is None:
             # Create minimal test state
             signal_state = {
@@ -141,13 +149,69 @@ class ExpressionManager:
                 'sample': 0
             }
         
+        warnings = []
+        
+        # Extract signal references from expression
+        import re
+        signal_pattern = r'"(AI|AO|TC|DO|PID|LE|Math|Expr):([^"]+)"'
+        matches = re.findall(signal_pattern, expression, re.IGNORECASE)
+        
+        # Build available signal names
+        available_signals = {
+            'AI': [item['name'] for item in signal_state.get('ai_list', [])],
+            'AO': [item['name'] for item in signal_state.get('ao_list', [])],
+            'TC': [item['name'] for item in signal_state.get('tc_list', [])],
+            'DO': [item['name'] for item in signal_state.get('do_list', [])],
+            'PID': [item['name'] for item in signal_state.get('pid_list', [])],
+            'LE': [item['name'] for item in signal_state.get('le_list', [])],
+            'Math': [item['name'] for item in signal_state.get('math_list', [])],
+            'Expr': [item['name'] for item in signal_state.get('expr_list', [])]
+        }
+        
+        # Validate each signal reference
+        for sig_type, sig_name in matches:
+            sig_type_proper = sig_type.upper()
+            # Normalize Math and Expr
+            if sig_type_proper == 'MATH':
+                sig_type_proper = 'Math'
+            elif sig_type_proper == 'EXPR':
+                sig_type_proper = 'Expr'
+            
+            available = available_signals.get(sig_type_proper, [])
+            
+            if sig_name not in available:
+                # Find close matches
+                close_matches = []
+                sig_name_lower = sig_name.lower()
+                for avail_name in available:
+                    if sig_name_lower in avail_name.lower() or avail_name.lower() in sig_name_lower:
+                        close_matches.append(avail_name)
+                
+                if close_matches:
+                    warnings.append({
+                        'type': 'unknown_signal',
+                        'signal': f'{sig_type}:{sig_name}',
+                        'message': f'Signal "{sig_type}:{sig_name}" not found. Did you mean: {", ".join(close_matches[:3])}?'
+                    })
+                else:
+                    available_list = ', '.join(available[:5])
+                    more = f' (+{len(available)-5} more)' if len(available) > 5 else ''
+                    warnings.append({
+                        'type': 'unknown_signal',
+                        'signal': f'{sig_type}:{sig_name}',
+                        'message': f'Signal "{sig_type}:{sig_name}" not found. Available {sig_type} signals: {available_list}{more}'
+                    })
+        
         try:
-            result, local_vars, hw_writes = evaluate_expression(expression, signal_state)
+            result, local_vars, hw_writes, branch_paths, executed_lines = evaluate_expression(expression, signal_state)
             return {
                 'ok': True,
                 'result': result,
                 'locals': local_vars,
                 'hw_writes': hw_writes,
+                'branches': branch_paths,
+                'executed_lines': list(executed_lines),
+                'warnings': warnings,
                 'error': None
             }
         except Exception as e:
@@ -156,6 +220,7 @@ class ExpressionManager:
                 'result': 0.0,
                 'locals': {},
                 'hw_writes': [],
+                'warnings': warnings,
                 'error': str(e)
             }
     

@@ -10,7 +10,7 @@ import math
 
 class MathOpInput(BaseModel):
     """Input source for a math operator"""
-    kind: str = "ai"  # ai, ao, tc, pid_u, math, expr, value
+    kind: str = "ai"  # ai, ao, tc, pid_u, math, value
     index: int = 0
     value: Optional[float] = None  # For kind='value', use this fixed value
 
@@ -127,8 +127,11 @@ class MathOpManager:
                 # Reference to expression output
                 expr_vals = state.get("expr", [])
                 if inp.index < len(expr_vals):
-                    v = expr_vals[inp.index]
-                    return v if math.isfinite(v) else 0.0
+                    # Handle both dict format and raw float
+                    val = expr_vals[inp.index]
+                    if isinstance(val, dict):
+                        val = val.get("output", 0.0)
+                    return val if math.isfinite(val) else 0.0
                 return 0.0
             
             elif inp.kind == "value":
