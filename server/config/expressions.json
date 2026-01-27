@@ -4,31 +4,31 @@
       "name": "0:WaterLevel",
       "enabled": true,
       "expression": "// Calculate water level\nstatic.waterLevel = (\"AI:DP Level 1\" - \"AI:DP Level 2\") * 32.28\nwaterLevel = static.waterLevel",
-      "execution_rate_hz": 10
+      "execution_rate_hz": 25
     },
     {
       "name": "1:PumpSetpoint",
       "enabled": true,
       "expression": "// Pump Set point Control\nstatic.pumpSetPoint = 0\nstatic.minWater = 38\nstatic.nomWater = 41\nstatic.maxWater = 48\n\nnomWater = static.nomWater\nmaxWater = static.maxWater\nminWater = static.minWater\n\nsteamTemp = static.steamTemp\n\nstatic.emergencyLowLevelFlow = 0.15\nemergLowLevelFlow = static.emergencyLowLevelFlow\n\nwaterLevel = static.waterLevel //get water level from expr0\nwaterBelowMin = 0\nwaterNominal = 0\nwaterTooHIGH = 0\n\nIF waterLevel < minWater THEN\n    branch = 0\n    waterBelowMin = 1\n    waterNominal = 0\n    waterTooHIGH = 0\n    static.pumpSetPoint = static.emergencyLowLevelFlow\nELSE IF ((waterLevel >= nomWater) AND (waterLevel < nomWater+3.0)) THEN\n    branch = 1\n    IF steamTemp > 145 THEN\n        static.pumpSetPoint = 0.125\n    ELSE IF steamTemp > 135 THEN\n        static.pumpSetPoint = 0.1\n    ELSE \n        static.pumpSetPoint = 0\n    ENDIF\n    waterBelowMin = 0\n    waterNominal = 1\n    waterTooHIGH = 0\nELSE IF waterLevel >= maxWater THEN\n    branch = 2\n    static.pumpSetPoint = 0.05\n    IF (steamTemp < 135) OR (static.heaterON == 0) THEN\n        static.pumpSetPoint = 0\n    ENDIF     \n    waterBelowMin = 0\n    waterNominal = 0\n    waterTooHIGH = 1\nELSE \n    branch = 3\n    IF steamTemp < 135 THEN\n      static.pumpSetPoint = 0\n    ELSE\n      static.pumpSetPoint = 0.1\n    ENDIF\n    waterBelowMin = 0\n    waterNominal = 0\n    waterTooHIGH = 0\nENDIF   \npumpSP = static.pumpSetPoint",
-      "execution_rate_hz": 10
+      "execution_rate_hz": 25
     },
     {
       "name": "2:HeaterEnable",
       "enabled": true,
-      "expression": "// Heater Enable Checks and Logic\nbutton = buttonVars.vButtonHeatEn\ncurrentP = \"AI:DP Level 2\"\nheatEn = static.HEAT_EN\nwaterLevel = static.waterLevel\nminLevel = static.minWater\nheaterTemp = \"TC:Element\"\nsteamTemp  = \"TC:Boil Out\"\nstatic.steamTemp = steamTemp\nstatic.heaterOn = \"DO:HeaterRelay\"\nsetPress = static.setPress\n\nstatic.heaterOverTemp = 0\nIF heaterTemp > 250 THEN \n   static.heaterOverTemp = 1 \nENDIF\nemergencyOverTemp = static.heaterOverTemp\n\nIF (waterLevel > minWater) AND (currentP < setPress+2) THEN\n  IF (emergencyOverTemp == 0) AND (steamTemp < 155) THEN\n    heatEN = 1\n  ELSE\n    heatEN = 0\n  ENDIF\n  levelOK = 1\nELSE\n  heatEN = 0\n  levelOK = 0\nENDIF\nIF button AND heatEN THEN \n    static.heat_EN = 1 \nELSE \n    static.heat_EN = 0 \nENDIF",
+      "expression": "// Heater Enable Checks and Logic\nbutton = buttonVars.vButtonHeatEn\ncurrentP = \"AI:DP Level 2\"\nheatEn = static.HEAT_EN\nwaterLevel = static.waterLevel\nminWater = static.minWater\nheaterTemp = \"TC:Element\"\nsteamTemp  = \"TC:Boil Out\"\nstatic.steamTemp = steamTemp\nstatic.heaterOn = \"DO:HeaterRelay\"\nsetPress = static.setPress\n\nstatic.heaterOverTemp = 0\nIF heaterTemp > 250 THEN \n   static.heaterOverTemp = 1 \nENDIF\nemergencyOverTemp = static.heaterOverTemp\n\nIF ((waterLevel > minWater) AND (currentP < setPress+2)) THEN\n  levelOK = 1\n  IF (emergencyOverTemp == 0) AND (steamTemp < 155) THEN\n    heatEN = 1\n  ELSE\n    heatEN = 0\n  ENDIF\nELSE\n  heatEN = 0\n  levelOK = 0\nENDIF\n\nIF button AND heatEN THEN \n   static.heat_EN = 1 \nELSE \n   static.heat_EN = 0 \nENDIF\n",
       "execution_rate_hz": 5
     },
     {
       "name": "3:PumpEnable",
       "enabled": true,
       "expression": "button = buttonVars.vButtonPumpEn\nflow = static.flow\nsetP = static.pumpSetPoint\n\nmaxWater = static.maxWater\nnomWater = static.nomWater\nminWater = static.minWater\nwaterLevel = static.waterLevel\n\npumpEn = 0\nIF (waterLevel < maxWater) and (button == 1) THEN\n    pumpEn = 1\nELSE\n    pumpEn = 0\nENDIF\n\nIF (setP > 0) AND (pumpEn == 1) THEN\n    \"AO:Servo Cmd\" = setP\nELSE\n    \"AO:Servo Cmd\" = 0.0\nENDIF\n\n\n",
-      "execution_rate_hz": 10
+      "execution_rate_hz": 25
     },
     {
       "name": "4:Filtered Flow",
       "enabled": true,
-      "expression": "// Returns filtered flow in gpm\nstatic.flowFilterCoef = 0.0025\nstatic.prevFlow\nrawFlow = static.flow\n\nstatic.filteredFlow = static.prevFlow*(1-static.flowFilterCoef) + rawFlow*static.flowFilterCoef\nstatic.prevFlow = static.filteredFlow",
-      "execution_rate_hz": 10
+      "expression": "// Returns filtered flow in gpm\nstatic.flowFilterCoef = 0.005\nstatic.prevFlow\nrawFlow = static.flow\n\nstatic.filteredFlow = static.prevFlow*(1-static.flowFilterCoef) + rawFlow*static.flowFilterCoef\nstatic.prevFlow = static.filteredFlow",
+      "execution_rate_hz": 25
     },
     {
       "name": "5:Set Flow",
@@ -40,19 +40,19 @@
       "name": "6:Water Level",
       "enabled": true,
       "expression": "// Returns filtered water level\nstatic.levelFilterCoef = 0.0025\nstatic.prevLevel\nrawLevel = static.waterLevel\nstatic.rawLevel = rawLevel\n\nstatic.waterLevel = static.prevLevel*(1-static.levelFilterCoef) + rawLevel*static.levelFilterCoef\nstatic.prevLevel = static.waterLevel\n",
-      "execution_rate_hz": 10
+      "execution_rate_hz": 25
     },
     {
       "name": "8:raw level",
       "enabled": true,
       "expression": "// Just returns raw level\nstatic.rawLevel",
-      "execution_rate_hz": 10
+      "execution_rate_hz": 25
     },
     {
       "name": "9:raw flow",
       "enabled": true,
       "expression": "// Returns raw flow\nstatic.flow",
-      "execution_rate_hz": 10
+      "execution_rate_hz": 25
     },
     {
       "name": "10:nominalTemp",
@@ -70,7 +70,7 @@
       "name": "12:Calc Flow",
       "enabled": true,
       "expression": "// Calculate Flow\npumpOutPress = \"AI:DP Flow 1\"\nstatic.DPFlow1 = pumpOutPress\n\ninletPress   = \"AI:DP Flow 2\"\nstatic.DPFlow2 = inletPress\n\nDPSum = pumpOutPress - inletPress\nrawF = sqrt(abs(pumpOutPress - inletPress))*0.056\nif (DPSum > 0) THEN\n    flow = rawF\nELSE\n    flow = -rawF\nENDIF\nstatic.flow = flow",
-      "execution_rate_hz": 10
+      "execution_rate_hz": 25
     }
   ]
 }

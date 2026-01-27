@@ -4,16 +4,13 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6ee747c5-542f-43af-b33e-a97c54c29c34" name="Changes" comment="Added preliminary support for multi-input math/LE's.  Fixed some US issues and implementation of LE output.  TODO: add variable SP input to PID's.  Make Math and LE inputs to PID's use names instead of indexes.">
-      <change beforePath="$PROJECT_DIR$/.idea/Web-MCC-DAQ-and-Control Fast.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Web-MCC-DAQ-and-Control Fast.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+    <list default="true" id="6ee747c5-542f-43af-b33e-a97c54c29c34" name="Changes" comment="Improved logging with buffering.  Improved expressions with AO:Name output, added expression execution rate in Hz so heavily loaded loops can execute expressions slower to keep from hanging the UI.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Boiler Control.json" beforeDir="false" afterPath="$PROJECT_DIR$/Boiler Control.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/config/config.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/config.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/config/expressions.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/expressions.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/expr_engine.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/expr_engine.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/expr_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/expr_manager.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/logger.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/logger.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/server.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/server.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/web/app.js" beforeDir="false" afterPath="$PROJECT_DIR$/web/app.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/web/index.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -296,7 +293,15 @@
       <option name="project" value="LOCAL" />
       <updated>1768325739897</updated>
     </task>
-    <option name="localTasksCounter" value="22" />
+    <task id="LOCAL-00022" summary="Improved logging with buffering.  Improved expressions with AO:Name output, added expression execution rate in Hz so heavily loaded loops can execute expressions slower to keep from hanging the UI.">
+      <option name="closed" value="true" />
+      <created>1769552659043</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1769552659043</updated>
+    </task>
+    <option name="localTasksCounter" value="23" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -331,7 +336,8 @@
     <MESSAGE value="Cleaned up debug statements and added zeroing function." />
     <MESSAGE value="Fixed some UI issues, new big TODO: Allowing long math inputs so we can combine many operators including logical and conditional.  This will be two phased." />
     <MESSAGE value="Added preliminary support for multi-input math/LE's.  Fixed some US issues and implementation of LE output.  TODO: add variable SP input to PID's.  Make Math and LE inputs to PID's use names instead of indexes." />
-    <option name="LAST_COMMIT_MESSAGE" value="Added preliminary support for multi-input math/LE's.  Fixed some US issues and implementation of LE output.  TODO: add variable SP input to PID's.  Make Math and LE inputs to PID's use names instead of indexes." />
+    <MESSAGE value="Improved logging with buffering.  Improved expressions with AO:Name output, added expression execution rate in Hz so heavily loaded loops can execute expressions slower to keep from hanging the UI." />
+    <option name="LAST_COMMIT_MESSAGE" value="Improved logging with buffering.  Improved expressions with AO:Name output, added expression execution rate in Hz so heavily loaded loops can execute expressions slower to keep from hanging the UI." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

@@ -14,7 +14,7 @@
     {
       "name": "DP Flow 1",
       "slope": 50.0,
-      "offset": -25.1961669921875,
+      "offset": -24.826812744140625,
       "cutoffHz": 0.1,
       "units": "psi",
       "include": true
@@ -22,7 +22,7 @@
     {
       "name": "DP Flow 2",
       "slope": 50.0,
-      "offset": -25.463150024414062,
+      "offset": -25.146942138671875,
       "cutoffHz": 0.1,
       "units": "psi",
       "include": true

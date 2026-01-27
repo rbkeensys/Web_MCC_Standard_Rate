@@ -195,6 +195,20 @@
                 "name": "Set Press",
                 "displayScale": 1,
                 "displayOffset": 0
+              },
+              {
+                "kind": "button",
+                "index": "vButtonPumpEn",
+                "name": "Pump Button",
+                "displayScale": 10,
+                "displayOffset": 0
+              },
+              {
+                "kind": "button",
+                "index": 0,
+                "name": "DP Flow 1",
+                "displayScale": 1,
+                "displayOffset": 0
               }
             ],
             "span": 120,
@@ -419,6 +433,13 @@
                 "index": 6,
                 "name": "DP Flow 1",
                 "displayScale": 1,
+                "displayOffset": 0
+              },
+              {
+                "kind": "button",
+                "index": "vButtonHeatEn",
+                "name": "Heat Button",
+                "displayScale": 10,
                 "displayOffset": 0
               }
             ],
