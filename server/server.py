@@ -2,7 +2,7 @@
 Version: 1.0.0
 Updated: 2026-01-14 23:30:56
 """
-__version__ = "2.0.2"  # LPF debug
+__version__ = "2.0.3"  # Fixed zero_ai for multi-board
 __updated__ = "2026-01-14 23:30:56"
 
 
@@ -36,7 +36,7 @@ from app_models import LEFile, LogicElementCfg
 from expr_manager import ExpressionManager
 from expr_engine import global_vars as expr_global_vars
 import logging, os, math
-SERVER_VERSION = "2.0.2"  # Debug output + bug fixes  # Added PID execution rate, IF statements, Math outputs
+SERVER_VERSION = "2.0.3"  # Debug output + bug fixes  # Added PID execution rate, IF statements, Math outputs
 
 
 MCC_TICK_LOG = os.environ.get("MCC_TICK_LOG", "1") == "1"  # print 1 line per second
@@ -1198,27 +1198,40 @@ async def zero_ai_channels(req: dict):
         
         await asyncio.sleep(1.0 / sample_rate)
     
-    # Calculate averages and new offsets
+    # Calculate averages and update offsets in actual board structure
     offsets_list = []
     for ch in channels:
         if not samples[ch]:
             return {"ok": False, "error": f"No valid samples for channel {ch}"}
         
         avg = sum(samples[ch]) / len(samples[ch])
-        old_offset = get_all_analogs(app_cfg)[ch].offset
         
-        # New offset = old_offset - (average - balance_to_value)
-        new_offset = old_offset - (avg - balance_to_value)
+        # Find which board and channel this global index maps to
+        global_idx = ch
+        found = False
+        for board in app_cfg.boards1608:
+            if not board.enabled:
+                continue
+            if global_idx < len(board.analogs):
+                # Found it! Update offset in the actual board structure
+                old_offset = board.analogs[global_idx].offset
+                new_offset = old_offset - (avg - balance_to_value)
+                board.analogs[global_idx].offset = new_offset
+                
+                offsets_list.append({
+                    "channel": ch,
+                    "old": old_offset,
+                    "new": new_offset,
+                    "avg": avg
+                })
+                print(f"[Zero AI] CH{ch} (board #{board.boardNum}, ch{global_idx}): avg={avg:.6f}, old_offset={old_offset:.6f}, new_offset={new_offset:.6f}")
+                found = True
+                break
+            else:
+                global_idx -= len(board.analogs)
         
-        get_all_analogs(app_cfg)[ch].offset = new_offset
-        offsets_list.append({
-            "channel": ch,
-            "old": old_offset,
-            "new": new_offset,
-            "avg": avg
-        })
-        
-        print(f"[Zero AI] CH{ch}: avg={avg:.6f}, old_offset={old_offset:.6f}, new_offset={new_offset:.6f}")
+        if not found:
+            print(f"[Zero AI] WARNING: Could not find board for channel {ch}")
     
     # Save config
     CFG_PATH.write_text(json.dumps(app_cfg.model_dump(), indent=2))

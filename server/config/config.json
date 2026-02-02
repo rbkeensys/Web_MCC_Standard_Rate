@@ -178,9 +178,9 @@
       "analogs": [
         {
           "name": "Scale",
-          "slope": 122.827,
-          "offset": -25.1043701171875,
-          "cutoffHz": 0.2,
+          "slope": 5.7475,
+          "offset": -12.996860618591308,
+          "cutoffHz": 0.5,
           "units": "grams",
           "include": true
         },
