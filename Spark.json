@@ -1,0 +1,42 @@
+{
+  "pages": [
+    {
+      "name": "Page 1",
+      "widgets": [
+        {
+          "id": "39b6099c-b713-4279-bf1b-d629922f8cf3",
+          "type": "dobutton",
+          "x": 87,
+          "y": 93,
+          "w": 166,
+          "h": 104,
+          "opts": {
+            "title": "Button",
+            "outputType": "var",
+            "doIndex": 0,
+            "varName": "sparkON",
+            "activeHigh": true,
+            "mode": "toggle",
+            "buzzHz": 10,
+            "actuationTime": 0,
+            "_timer": null
+          }
+        },
+        {
+          "id": "5b0a69f5-cb75-42a3-a70f-4cd7daf8fbab",
+          "type": "expr",
+          "x": 413,
+          "y": 99,
+          "w": 350,
+          "h": 200,
+          "opts": {
+            "title": "Spark",
+            "exprIndex": 12,
+            "showSource": true,
+            "showOutput": true
+          }
+        }
+      ]
+    }
+  ]
+}

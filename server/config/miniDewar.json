@@ -1,0 +1,422 @@
+{
+  "boards1608": [
+    {
+      "boardNum": 0,
+      "sampleRateHz": 100,
+      "blockSize": 128,
+      "aiMode": "SE",
+      "enabled": true,
+      "analogs": [
+        {
+          "name": "DP Flow 1",
+          "slope": 50,
+          "offset": -25.182902018229168,
+          "cutoffHz": 0.1,
+          "units": "psi",
+          "include": true
+        },
+        {
+          "name": "DP Flow 2",
+          "slope": 50,
+          "offset": -25.455271402994793,
+          "cutoffHz": 0.1,
+          "units": "psi",
+          "include": true
+        },
+        {
+          "name": "DP Level 1",
+          "slope": 2.5,
+          "offset": -1.25,
+          "cutoffHz": 0.1,
+          "units": "psi",
+          "include": true
+        },
+        {
+          "name": "DP Level 2",
+          "slope": 50,
+          "offset": -25.121612548828125,
+          "cutoffHz": 0.1,
+          "units": "psi",
+          "include": true
+        },
+        {
+          "name": "AI4",
+          "slope": 1,
+          "offset": 0,
+          "cutoffHz": 0,
+          "units": "",
+          "include": true
+        },
+        {
+          "name": "AI5",
+          "slope": 1,
+          "offset": 0,
+          "cutoffHz": 0,
+          "units": "",
+          "include": true
+        },
+        {
+          "name": "AI6",
+          "slope": 1,
+          "offset": 0,
+          "cutoffHz": 0,
+          "units": "",
+          "include": true
+        },
+        {
+          "name": "AI7",
+          "slope": 1,
+          "offset": 0,
+          "cutoffHz": 0,
+          "units": "",
+          "include": true
+        }
+      ],
+      "digitalOutputs": [
+        {
+          "name": "PumpButton",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": true,
+          "logicElement": null,
+          "mode": "toggle"
+        },
+        {
+          "name": "DO1",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": true,
+          "logicElement": null,
+          "mode": "toggle"
+        },
+        {
+          "name": "HeaterRelay",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": true,
+          "logicElement": null,
+          "mode": "toggle"
+        },
+        {
+          "name": "DO3",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": true,
+          "logicElement": null,
+          "mode": "toggle"
+        },
+        {
+          "name": "DO4",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": true,
+          "logicElement": null,
+          "mode": "toggle"
+        },
+        {
+          "name": "DO5",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": true,
+          "logicElement": null,
+          "mode": "toggle"
+        },
+        {
+          "name": "DO6",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": true,
+          "logicElement": null,
+          "mode": "toggle"
+        },
+        {
+          "name": "Heat_Button",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": true,
+          "logicElement": null,
+          "mode": "toggle"
+        }
+      ],
+      "analogOutputs": [
+        {
+          "name": "Servo Cmd",
+          "minV": 0,
+          "maxV": 10,
+          "startupV": 0,
+          "include": true,
+          "enable_gate": true,
+          "enable_kind": "le",
+          "enable_index": 0
+        },
+        {
+          "name": "AO1",
+          "minV": 0,
+          "maxV": 10,
+          "startupV": 0,
+          "include": true,
+          "enable_gate": false,
+          "enable_kind": "do",
+          "enable_index": 0
+        }
+      ]
+    },
+    {
+      "boardNum": 2,
+      "sampleRateHz": 100,
+      "blockSize": 128,
+      "aiMode": "SE",
+      "enabled": true,
+      "analogs": [
+        {
+          "name": "Scale",
+          "slope": 12.964544166584048,
+          "offset": -14.438089951924185,
+          "cutoffHz": 1,
+          "units": "grams",
+          "include": true
+        },
+        {
+          "name": "AI1",
+          "slope": 1,
+          "offset": 0,
+          "cutoffHz": 0.1,
+          "units": "psi",
+          "include": false
+        },
+        {
+          "name": "AI2",
+          "slope": 1,
+          "offset": 0,
+          "cutoffHz": 0.1,
+          "units": "psi",
+          "include": false
+        },
+        {
+          "name": "AI3",
+          "slope": 1,
+          "offset": 0,
+          "cutoffHz": 0.1,
+          "units": "psi",
+          "include": false
+        },
+        {
+          "name": "AI4",
+          "slope": 1,
+          "offset": 0,
+          "cutoffHz": 0,
+          "units": "",
+          "include": false
+        },
+        {
+          "name": "AI5",
+          "slope": 1,
+          "offset": 0,
+          "cutoffHz": 0,
+          "units": "",
+          "include": false
+        },
+        {
+          "name": "AI6",
+          "slope": 1,
+          "offset": 0,
+          "cutoffHz": 0,
+          "units": "",
+          "include": false
+        },
+        {
+          "name": "AI7",
+          "slope": 1,
+          "offset": 0,
+          "cutoffHz": 0,
+          "units": "",
+          "include": false
+        }
+      ],
+      "digitalOutputs": [
+        {
+          "name": "Spark",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": true,
+          "logicElement": null,
+          "mode": "toggle"
+        },
+        {
+          "name": "DO1",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": true,
+          "logicElement": null,
+          "mode": "toggle"
+        },
+        {
+          "name": "DO2",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": false,
+          "logicElement": null,
+          "mode": "toggle"
+        },
+        {
+          "name": "DO3",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": false,
+          "logicElement": null,
+          "mode": "toggle"
+        },
+        {
+          "name": "DO4",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": false,
+          "logicElement": null,
+          "mode": "toggle"
+        },
+        {
+          "name": "DO5",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": false,
+          "logicElement": null,
+          "mode": "toggle"
+        },
+        {
+          "name": "DO6",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": false,
+          "logicElement": null,
+          "mode": "toggle"
+        },
+        {
+          "name": "DO7",
+          "normallyOpen": false,
+          "momentary": false,
+          "actuationTime": 0,
+          "include": false,
+          "logicElement": null,
+          "mode": "toggle"
+        }
+      ],
+      "analogOutputs": [
+        {
+          "name": "AO0",
+          "minV": 0,
+          "maxV": 10,
+          "startupV": 0,
+          "include": true,
+          "enable_gate": false,
+          "enable_kind": "le",
+          "enable_index": 0
+        },
+        {
+          "name": "AO1",
+          "minV": 0,
+          "maxV": 10,
+          "startupV": 0,
+          "include": true,
+          "enable_gate": false,
+          "enable_kind": "do",
+          "enable_index": 0
+        }
+      ]
+    }
+  ],
+  "boardsetc": [
+    {
+      "boardNum": 1,
+      "sampleRateHz": 10,
+      "blockSize": 1,
+      "enabled": true,
+      "thermocouples": [
+        {
+          "include": true,
+          "ch": 0,
+          "name": "Condense Out",
+          "type": "K",
+          "offset": 0,
+          "cutoffHz": 0.1
+        },
+        {
+          "include": true,
+          "ch": 1,
+          "name": "Boil In",
+          "type": "K",
+          "offset": 0,
+          "cutoffHz": 0.1
+        },
+        {
+          "include": true,
+          "ch": 2,
+          "name": "Boil Out",
+          "type": "K",
+          "offset": 0,
+          "cutoffHz": 0.1
+        },
+        {
+          "include": true,
+          "ch": 3,
+          "name": "Element",
+          "type": "K",
+          "offset": 0,
+          "cutoffHz": 0.1
+        },
+        {
+          "include": false,
+          "ch": 4,
+          "name": "TC4",
+          "type": "K",
+          "offset": 0,
+          "cutoffHz": 0.1
+        },
+        {
+          "include": false,
+          "ch": 5,
+          "name": "TC5",
+          "type": "T",
+          "offset": 0,
+          "cutoffHz": 0.1
+        },
+        {
+          "include": false,
+          "ch": 6,
+          "name": "TC6",
+          "type": "T",
+          "offset": 0,
+          "cutoffHz": 0.1
+        },
+        {
+          "include": true,
+          "ch": 7,
+          "name": "TC7",
+          "type": "T",
+          "offset": 0,
+          "cutoffHz": 0.1
+        }
+      ]
+    }
+  ],
+  "board1608": null,
+  "boardetc": null,
+  "analogs": null,
+  "digitalOutputs": null,
+  "analogOutputs": null,
+  "thermocouples": null
+}
