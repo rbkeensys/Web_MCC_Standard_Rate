@@ -1,7 +1,4 @@
-"""
-Version: 1.0.0
-Updated: 2026-01-14 23:30:56
-"""
+
 __version__ = "5.19.2"  # Added cycle-start debug to show samples grabbed vs buffer size
 __updated__ = "2026-01-14 23:30:56"
 
