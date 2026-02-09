@@ -4,15 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6ee747c5-542f-43af-b33e-a97c54c29c34" name="Changes" comment="Block samples working, was faster but this is improved, many issues with DO writes but seems to work, need to fix script editor and probably other things.  Major improvement is pre-compiled expressions which run very fast.">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Spark.json" beforeDir="false" afterPath="$PROJECT_DIR$/Spark.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/app_models.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/app_models.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/config/config.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/config.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/config/expressions.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/expressions.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/config/script.json" beforeDir="false" afterPath="$PROJECT_DIR$/server/config/script.json" afterDir="false" />
+    <list default="true" id="6ee747c5-542f-43af-b33e-a97c54c29c34" name="Changes" comment="Fixed not calling the script editor, got frame rate setting working, other fixes.  &#10;Big TODO: refactor how blocks of samples are sent to the display, make sure they go all at once and the display is then updated rather than sample at a time pushed in.">
       <change beforePath="$PROJECT_DIR$/web/app.js" beforeDir="false" afterPath="$PROJECT_DIR$/web/app.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/web/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/web/index.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -339,7 +332,15 @@
       <option name="project" value="LOCAL" />
       <updated>1770408182791</updated>
     </task>
-    <option name="localTasksCounter" value="28" />
+    <task id="LOCAL-00028" summary="Fixed not calling the script editor, got frame rate setting working, other fixes.  &#10;Big TODO: refactor how blocks of samples are sent to the display, make sure they go all at once and the display is then updated rather than sample at a time pushed in.">
+      <option name="closed" value="true" />
+      <created>1770665678645</created>
+      <option name="number" value="00028" />
+      <option name="presentableId" value="LOCAL-00028" />
+      <option name="project" value="LOCAL" />
+      <updated>1770665678645</updated>
+    </task>
+    <option name="localTasksCounter" value="29" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -380,7 +381,8 @@
     <MESSAGE value="Multiple DAQ Boards and TC's working.  Many fixes to allow larger input lists.  Need to debug actual operation again" />
     <MESSAGE value="Fixing tare which should zero the channel, not just the gauge." />
     <MESSAGE value="Block samples working, was faster but this is improved, many issues with DO writes but seems to work, need to fix script editor and probably other things.  Major improvement is pre-compiled expressions which run very fast." />
-    <option name="LAST_COMMIT_MESSAGE" value="Block samples working, was faster but this is improved, many issues with DO writes but seems to work, need to fix script editor and probably other things.  Major improvement is pre-compiled expressions which run very fast." />
+    <MESSAGE value="Fixed not calling the script editor, got frame rate setting working, other fixes.  &#10;Big TODO: refactor how blocks of samples are sent to the display, make sure they go all at once and the display is then updated rather than sample at a time pushed in." />
+    <option name="LAST_COMMIT_MESSAGE" value="Fixed not calling the script editor, got frame rate setting working, other fixes.  &#10;Big TODO: refactor how blocks of samples are sent to the display, make sure they go all at once and the display is then updated rather than sample at a time pushed in." />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/server_py$MCC_Web_App.coverage" NAME="MCC Web App Coverage Results" MODIFIED="1768338813910" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
