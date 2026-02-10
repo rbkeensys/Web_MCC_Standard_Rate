@@ -50,7 +50,7 @@
             "varName": "button1",
             "activeHigh": true,
             "mode": "buzz",
-            "buzzHz": 100,
+            "buzzHz": 50,
             "actuationTime": 25,
             "_timer": null
           }
@@ -58,8 +58,8 @@
         {
           "id": "44a52c62-f4da-4586-8275-9ca5d877882e",
           "type": "chart",
-          "x": 25,
-          "y": 340,
+          "x": 48,
+          "y": 299,
           "w": 1630,
           "h": 775,
           "opts": {
@@ -68,7 +68,7 @@
               {
                 "kind": "do",
                 "index": 0,
-                "name": "Scale",
+                "name": "spark DO",
                 "displayScale": 1,
                 "displayOffset": 0
               },
@@ -80,17 +80,18 @@
                 "displayOffset": 0
               }
             ],
-            "span": 60,
+            "span": 5,
             "paused": false,
             "scale": "auto",
             "min": 0,
             "max": 10,
             "filterHz": 0,
             "cursorMode": "follow",
-            "yGridLines": 5
+            "yGridLines": 5,
+            "tFreeze": null
           },
           "view": {
-            "span": 60,
+            "span": 5,
             "paused": false,
             "tFreeze": 0
           }

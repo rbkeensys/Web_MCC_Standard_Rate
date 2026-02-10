@@ -191,7 +191,7 @@
       "input_b": {
         "kind": "value",
         "index": 1,
-        "value": 31.82
+        "value": 32.82
       },
       "output_true": null,
       "output_false": null,
@@ -204,7 +204,7 @@
     },
     {
       "enabled": true,
-      "name": "M7:Filtered Level",
+      "name": "M7:Filtered Flow Expr",
       "operation": "filter",
       "inputs": [
         {
@@ -214,248 +214,14 @@
         }
       ],
       "input_a": {
-        "kind": "math",
-        "index": 6,
-        "value": null
-      },
-      "input_b": null,
-      "output_true": null,
-      "output_false": null,
-      "filter_hz": 0.1,
-      "has_output": false,
-      "output_type": null,
-      "output_channel": null,
-      "output_min": null,
-      "output_max": null
-    },
-    {
-      "enabled": true,
-      "name": "M8:High Level",
-      "operation": "if_lt",
-      "inputs": [
-        {
-          "kind": "ai",
-          "index": 0,
-          "value": null
-        }
-      ],
-      "input_a": {
-        "kind": "math",
-        "index": 7,
-        "value": null
-      },
-      "input_b": {
-        "kind": "value",
-        "index": 1,
-        "value": 50.0
-      },
-      "output_true": {
-        "kind": "value",
-        "index": 0,
-        "value": 1.0
-      },
-      "output_false": {
-        "kind": "value",
-        "index": 0,
-        "value": 0.0
-      },
-      "filter_hz": null,
-      "has_output": false,
-      "output_type": null,
-      "output_channel": null,
-      "output_min": null,
-      "output_max": null
-    },
-    {
-      "enabled": true,
-      "name": "M9:Set Flow",
-      "operation": "add",
-      "inputs": [
-        {
-          "kind": "ai",
-          "index": 0,
-          "value": null
-        }
-      ],
-      "input_a": {
-        "kind": "value",
-        "index": 0,
-        "value": null
-      },
-      "input_b": {
-        "kind": "value",
-        "index": 1,
-        "value": 0.12
-      },
-      "output_true": null,
-      "output_false": null,
-      "filter_hz": null,
-      "has_output": false,
-      "output_type": null,
-      "output_channel": null,
-      "output_min": null,
-      "output_max": null
-    },
-    {
-      "enabled": true,
-      "name": "M10:DP Level 1 Filt",
-      "operation": "filter",
-      "inputs": [
-        {
-          "kind": "ai",
-          "index": 0,
-          "value": null
-        }
-      ],
-      "input_a": {
-        "kind": "ai",
-        "index": 2,
+        "kind": "expr",
+        "index": 4,
         "value": null
       },
       "input_b": null,
       "output_true": null,
       "output_false": null,
       "filter_hz": 0.02,
-      "has_output": false,
-      "output_type": null,
-      "output_channel": null,
-      "output_min": null,
-      "output_max": null
-    },
-    {
-      "enabled": true,
-      "name": "M11:DP Level 2 Filt",
-      "operation": "filter",
-      "inputs": [
-        {
-          "kind": "ai",
-          "index": 0,
-          "value": null
-        }
-      ],
-      "input_a": {
-        "kind": "ai",
-        "index": 3,
-        "value": null
-      },
-      "input_b": null,
-      "output_true": null,
-      "output_false": null,
-      "filter_hz": 0.02,
-      "has_output": false,
-      "output_type": null,
-      "output_channel": null,
-      "output_min": null,
-      "output_max": null
-    },
-    {
-      "enabled": true,
-      "name": "M12:Low Press - Set Low Flow",
-      "operation": "if_lt",
-      "inputs": [
-        {
-          "kind": "ai",
-          "index": 0,
-          "value": null
-        }
-      ],
-      "input_a": {
-        "kind": "ai",
-        "index": 2,
-        "value": null
-      },
-      "input_b": {
-        "kind": "value",
-        "index": 1,
-        "value": 95.0
-      },
-      "output_true": {
-        "kind": "math",
-        "index": 14,
-        "value": 0.02
-      },
-      "output_false": {
-        "kind": "pid_u",
-        "index": 1,
-        "value": 0.025
-      },
-      "filter_hz": null,
-      "has_output": false,
-      "output_type": null,
-      "output_channel": null,
-      "output_min": null,
-      "output_max": null
-    },
-    {
-      "enabled": true,
-      "name": "M13:Low Low Press - Flow Stop",
-      "operation": "if_lt",
-      "inputs": [
-        {
-          "kind": "ai",
-          "index": 0,
-          "value": null
-        }
-      ],
-      "input_a": {
-        "kind": "ai",
-        "index": 2,
-        "value": null
-      },
-      "input_b": {
-        "kind": "value",
-        "index": 1,
-        "value": 90.0
-      },
-      "output_true": {
-        "kind": "value",
-        "index": 1,
-        "value": 0.035
-      },
-      "output_false": {
-        "kind": "pid_u",
-        "index": 1,
-        "value": 0.0
-      },
-      "filter_hz": null,
-      "has_output": false,
-      "output_type": null,
-      "output_channel": null,
-      "output_min": null,
-      "output_max": null
-    },
-    {
-      "enabled": true,
-      "name": "M14:Low Low Lvl - Force Fill",
-      "operation": "if_lt",
-      "inputs": [
-        {
-          "kind": "ai",
-          "index": 0,
-          "value": null
-        }
-      ],
-      "input_a": {
-        "kind": "math",
-        "index": 7,
-        "value": null
-      },
-      "input_b": {
-        "kind": "value",
-        "index": 1,
-        "value": 38.0
-      },
-      "output_true": {
-        "kind": "value",
-        "index": 1,
-        "value": 0.2
-      },
-      "output_false": {
-        "kind": "math",
-        "index": 13,
-        "value": 0.0
-      },
-      "filter_hz": null,
       "has_output": false,
       "output_type": null,
       "output_channel": null,

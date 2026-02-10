@@ -6,12 +6,12 @@ from typing import List, Dict, Optional
 class LoopDef:
     enabled: bool
     kind: str           # "analog" | "digital" | "var"
-    src: str            # "ai" | "tc"
+    src: str            # "ai" | "tc" | "ao" | "pid" | "math" | "expr"
     ai_ch: int
     out_ch: int         # AO idx for analog, DO idx for digital
     target: float       # Fixed setpoint value (used when sp_source="fixed")
-    sp_source: str = "fixed"  # "fixed", "ao", "math"
-    sp_channel: int = 0       # Channel for "ao" or "math" sources
+    sp_source: str = "fixed"  # "fixed", "ao", "math", "expr", "pid"
+    sp_channel: int = 0       # Channel for "ao", "math", "expr", "pid" sources
     kp: float = 0.0
     ki: float = 0.0
     kd: float = 0.0
@@ -112,7 +112,7 @@ class PIDManager:
         self.meta = new_meta
         self.last_gate_states = new_gate_states
 
-    def step(self, ai_vals: List[float], tc_vals: List[float], bridge, do_state=None, le_state=None, pid_prev=None, math_outputs=None, sample_rate_hz=100.0) -> List[Dict]:
+    def step(self, ai_vals: List[float], tc_vals: List[float], bridge, do_state=None, le_state=None, pid_prev=None, math_outputs=None, expr_outputs=None, sample_rate_hz=100.0) -> List[Dict]:
         import time
         dt = 1.0 / max(1.0, sample_rate_hz)  # Time step in seconds
         tel = []
@@ -138,16 +138,35 @@ class PIDManager:
                 
             # Check enable gate if configured
             gate_enabled = True
+            gate_value = 1.0  # Default gate value when no gate configured
             if d.enable_gate:
                 if d.enable_kind == "do" and do_state is not None:
                     if d.enable_index < len(do_state):
+                        gate_value = 1.0 if do_state[d.enable_index] else 0.0
                         gate_enabled = bool(do_state[d.enable_index])
                     else:
+                        gate_value = 0.0
                         gate_enabled = False
                 elif d.enable_kind == "le" and le_state is not None:
                     if d.enable_index < len(le_state):
+                        gate_value = 1.0 if le_state[d.enable_index].get("output", False) else 0.0
                         gate_enabled = le_state[d.enable_index].get("output", False)
                     else:
+                        gate_value = 0.0
+                        gate_enabled = False
+                elif d.enable_kind == "math" and math_outputs is not None:
+                    if d.enable_index < len(math_outputs):
+                        gate_value = math_outputs[d.enable_index]
+                        gate_enabled = gate_value >= 1.0
+                    else:
+                        gate_value = 0.0
+                        gate_enabled = False
+                elif d.enable_kind == "expr" and expr_outputs is not None:
+                    if d.enable_index < len(expr_outputs):
+                        gate_value = expr_outputs[d.enable_index]
+                        gate_enabled = gate_value >= 1.0
+                    else:
+                        gate_value = 0.0
                         gate_enabled = False
                 
                 # Log and handle state transitions
@@ -174,7 +193,7 @@ class PIDManager:
             
             # If gated, don't calculate - return zeros immediately
             if not gate_enabled:
-                tel.append({"name": d.name, "pv": 0.0, "u": 0.0, "out": 0.0, "err": 0.0, "enabled": True, "gated": True})
+                tel.append({"name": d.name, "pv": 0.0, "u": 0.0, "out": 0.0, "err": 0.0, "enabled": True, "gated": True, "gate_value": gate_value})
                 continue
             
             # Check if this PID should execute this cycle (decimation)
@@ -203,6 +222,7 @@ class PIDManager:
                     "target": p.last_sp,  # Show last setpoint used
                     "enabled": True, 
                     "gated": False,
+                    "gate_value": gate_value,
                     "skipped": True
                 })
                 continue
@@ -226,6 +246,10 @@ class PIDManager:
                     # Use math operator output
                     if d.ai_ch < len(math_outputs):
                         pv = math_outputs[d.ai_ch]
+                elif d.src == "expr" and expr_outputs:
+                    # Use expression output as PV
+                    if d.ai_ch < len(expr_outputs):
+                        pv = expr_outputs[d.ai_ch]
                 
                 # Compute setpoint from configured source
                 sp = d.target  # Default to fixed value
@@ -237,10 +261,15 @@ class PIDManager:
                     # Use math operator output as setpoint
                     if d.sp_channel < len(math_outputs):
                         sp = math_outputs[d.sp_channel]
+                elif d.sp_source == "expr" and expr_outputs:
+                    # Use expression output as setpoint
+                    if d.sp_channel < len(expr_outputs):
+                        sp = expr_outputs[d.sp_channel]
                 elif d.sp_source == "pid" and pid_prev:
                     # Use another PID's output as setpoint (cascade control)
                     if d.sp_channel < len(pid_prev):
                         sp = pid_prev[d.sp_channel].get("out", 0.0)
+                # Note: "static" would require global variable lookup - not implemented yet
                 
                 u, err, p_term, i_term, d_term = p.step(pv, sp, dt)
                 
@@ -285,7 +314,8 @@ class PIDManager:
                     "d_term": d_term,
                     "target": sp,  # Show actual setpoint used (may be from AO/Math)
                     "enabled": True, 
-                    "gated": False
+                    "gated": False,
+                    "gate_value": gate_value
                 })
             except Exception as e:
                 # Log error but continue with other PIDs

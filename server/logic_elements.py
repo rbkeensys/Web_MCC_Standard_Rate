@@ -150,6 +150,41 @@ class LEManager:
                         return val != 0.0
                 return False
             
+            elif inp.kind == "expr":
+                # Reference to an expression output
+                expr_vals = state.get("expr", [])
+                if inp.index < len(expr_vals):
+                    # Expressions can be floats or dicts with 'output' key
+                    if isinstance(expr_vals[inp.index], dict):
+                        val = expr_vals[inp.index].get("output", 0.0)
+                    else:
+                        val = float(expr_vals[inp.index])
+                    
+                    # Check for NaN
+                    import math as m
+                    if not m.isfinite(val):
+                        return False
+                    
+                    # If there's a comparison, do it
+                    if inp.comparison:
+                        if inp.compare_to_type == "value":
+                            compare_val = inp.compare_value if inp.compare_value is not None else 0.0
+                        else:
+                            compare_val = 0.0
+                        
+                        if inp.comparison == "lt":
+                            return val < compare_val
+                        elif inp.comparison == "eq":
+                            return abs(val - compare_val) < 1e-6
+                        elif inp.comparison == "gt":
+                            return val > compare_val
+                        else:
+                            return val != 0.0
+                    else:
+                        # No comparison - treat as boolean (>= 1.0 = true)
+                        return val >= 1.0
+                return False
+            
             elif inp.kind in ["ai", "ao", "tc", "pid_u"]:
                 # Get the analog value
                 if inp.kind == "ai":

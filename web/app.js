@@ -1,5 +1,4 @@
-// app.js – UI v0.9.4 - PART 1 OF 2
-const UI_VERSION = "0.13.8";  // Added Math Operator widgets
+const UI_VERSION = "1.8.1";  // Fixed: Now loads BOTH acq and display rates on startup
 
 /* ----------------------------- helpers ---------------------------------- */
 const $ = sel => document.querySelector(sel);
@@ -16,6 +15,72 @@ function safeArc(ctx, cx, cy, r, a0, a1) {
   if (!Number.isFinite(r) || r <= 0) return false;
   ctx.arc(cx, cy, r, a0, a1);
   return true;
+}
+
+/* ==================== FILE LOAD/SAVE HELPERS ==================== */
+// Create a Load button that loads JSON from file
+function createLoadButton(onLoad) {
+  return el('button', {
+    className: 'btn',
+    onclick: () => {
+      const inp = el('input', {type: 'file', accept: '.json'});
+      inp.onchange = async () => {
+        const f = inp.files?.[0];
+        if (!f) return;
+        try {
+          const text = await f.text();
+          const loaded = JSON.parse(text);
+          onLoad(loaded, f.name);
+        } catch(e) {
+          alert('Failed to load: ' + e.message);
+        }
+      };
+      inp.click();
+    }
+  }, '📁 Load from File');
+}
+
+// Create a Save As button that saves JSON to file
+function createSaveAsButton(getData, defaultFilename = 'data.json') {
+  return el('button', {
+    className: 'btn',
+    onclick: () => {
+      const data = JSON.stringify(getData(), null, 2);
+      const blob = new Blob([data], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = defaultFilename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      URL.revokeObjectURL(url);
+    }
+  }, '💾 Save As...');
+}
+
+
+/* ======================== EXPRESSION WIDGET HELPERS ======================== */
+function formatValue(val) {
+  if (val === null || val === undefined) return 'N/A';
+  if (typeof val === 'boolean') return val ? 'true' : 'false';
+  if (typeof val === 'number') {
+    if (!Number.isFinite(val)) return 'NaN';
+    if (Math.abs(val) < 0.01 || Math.abs(val) > 10000) {
+      return val.toExponential(3);
+    }
+    return val.toFixed(3);
+  }
+  return String(val);
+}
+
+function getValueColor(val) {
+  if (val === null || val === undefined || !Number.isFinite(val)) return '#d84a4a';
+  if (val === 0) return '#9094a1';
+  if (val > 0) return '#2faa60';
+  return '#ff9966';
 }
 
 /* ======================== LOG REPLAY ======================== */
@@ -525,6 +590,37 @@ async function executeScriptEvent(evt){
       }
 
       console.log(`[Script] ✓ AO${channel} set to ${volts}V`);
+      
+    } else if (evt.type === 'buttonVar') {
+      const varName = evt.varName || 'button1';
+      const value = evt.value || 0;
+      
+      console.log(`[Script] buttonVar.${varName}: ${value}`);
+      
+      // Update local state
+      if (!state.buttonVars) state.buttonVars = {};
+      state.buttonVars[varName] = value;
+      
+      // Sync to backend for expressions
+      const response = await fetch('/api/button_vars', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({vars: state.buttonVars})
+      });
+      
+      if (!response.ok) {
+        console.error('[Script] buttonVar set failed:', await response.text());
+        return;
+      }
+      
+      console.log(`[Script] ✓ buttonVar.${varName} set to ${value}`);
+      
+    } else if (evt.type === 'var') {
+      const varName = evt.varName || 'var1';
+      const value = evt.value || 0;
+      
+      console.log(`[Script] var.${varName}: ${value} (not implemented - expressions only)`);
+      // Note: Generic 'var' type for future use, not currently used by expressions
     }
   } catch(e) {
     console.error('[Script] Event execution failed:', e, 'Event:', evt);
@@ -658,6 +754,87 @@ window.testScriptEvent = async function(channel, state) {
 /* ------------------------------ state ----------------------------------- */
 let hwReady = false;
 let configCache = null;
+
+// Helper functions to flatten board-centric config for UI compatibility
+function getAllAnalogs(cfg) {
+  try {
+    if (!cfg) return [];
+    // Old format fallback
+    if (cfg.analogs) return cfg.analogs;
+    // New format: flatten from all boards
+    const all = [];
+    if (cfg.boards1608 && Array.isArray(cfg.boards1608)) {
+      cfg.boards1608.forEach(board => {
+        if (board && board.enabled && board.analogs && Array.isArray(board.analogs)) {
+          all.push(...board.analogs);
+        }
+      });
+    }
+    return all;
+  } catch (e) {
+    console.error('[getAllAnalogs] Error:', e);
+    return [];
+  }
+}
+
+function getAllDigitalOutputs(cfg) {
+  try {
+    if (!cfg) return [];
+    if (cfg.digitalOutputs) return cfg.digitalOutputs;
+    const all = [];
+    if (cfg.boards1608 && Array.isArray(cfg.boards1608)) {
+      cfg.boards1608.forEach(board => {
+        if (board && board.enabled && board.digitalOutputs && Array.isArray(board.digitalOutputs)) {
+          all.push(...board.digitalOutputs);
+        }
+      });
+    }
+    return all;
+  } catch (e) {
+    console.error('[getAllDigitalOutputs] Error:', e);
+    return [];
+  }
+}
+
+function getAllAnalogOutputs(cfg) {
+  try {
+    if (!cfg) return [];
+    if (cfg.analogOutputs) return cfg.analogOutputs;
+    const all = [];
+    if (cfg.boards1608 && Array.isArray(cfg.boards1608)) {
+      cfg.boards1608.forEach(board => {
+        if (board && board.enabled && board.analogOutputs && Array.isArray(board.analogOutputs)) {
+          all.push(...board.analogOutputs);
+        }
+      });
+    }
+    return all;
+  } catch (e) {
+    console.error('[getAllAnalogOutputs] Error:', e);
+    return [];
+  }
+}
+
+function getAllThermocouples(cfg) {
+  try {
+    if (!cfg) return [];
+    if (cfg.thermocouples) return cfg.thermocouples;
+    const all = [];
+    if (cfg.boardsetc && Array.isArray(cfg.boardsetc)) {
+      cfg.boardsetc.forEach(board => {
+        if (board && board.enabled && board.thermocouples && Array.isArray(board.thermocouples)) {
+          all.push(...board.thermocouples);
+        }
+      });
+    }
+    return all;
+  } catch (e) {
+    console.error('[getAllThermocouples] Error:', e);
+    return [];
+  }
+}
+
+
 let ws = null, sessionDir = '', connected = false;
 
 const state = {
@@ -672,6 +849,12 @@ const state = {
 };
 
 function feedTick(msg){
+  // Debug logging (only for first few ticks or when state.expr appears)
+  if (msg.expr && (!state.expr || (window._exprDebugCount || 0) < 5)) {
+    console.log('[FeedTick] Received expr data:', msg.expr);
+    window._exprDebugCount = (window._exprDebugCount || 0) + 1;
+  }
+  
   if (msg.ai)  state.ai  = msg.ai;
   if (msg.ao)  state.ao  = msg.ao;
   if (msg.do)  state.do  = msg.do;
@@ -680,6 +863,7 @@ function feedTick(msg){
   if (msg.motors) state.motors = msg.motors;
   if (msg.le) state.le = msg.le;  // Logic Elements
   if (msg.math) state.math = msg.math;  // Math Operators
+  if (msg.expr) state.expr = msg.expr;  // Expressions
   onTick();
 }
 
@@ -695,14 +879,51 @@ document.addEventListener('DOMContentLoaded', () => {
   ensureStarterPage();
   showVersions();
   loadConfigCache();
+  loadCurrentRates(); // Load actual rates from server
   connect();
   hookLogButtons();
   hookScriptButtons();
 });
 
+async function loadCurrentRates() {
+  try {
+    const response = await fetch('/api/rates');
+    const data = await response.json();
+    
+    // Update acquisition rate input
+    const acqInput = $('#rate');
+    if (acqInput && data.acq_rate) {
+      acqInput.value = data.acq_rate;
+    }
+    
+    // Update display rate input
+    const displayInput = $('#displayRate');
+    if (displayInput && data.display_rate) {
+      displayInput.value = data.display_rate;
+    }
+    
+    console.log(`[INIT] Loaded rates: Acq=${data.acq_rate} Hz, Display=${data.display_rate} Hz`);
+  } catch (e) {
+    console.error('Failed to load current rates:', e);
+  }
+}
+
 function wireUI(){
   $('#connectBtn')?.addEventListener('click', connect);
   $('#setRate')?.addEventListener('click', setRate);
+  $('#setDisplayRate')?.addEventListener('click', async ()=>{
+    const hz = parseFloat($('#displayRate').value) || 25;
+    try {
+      await fetch('/api/display/rate', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({hz})
+      });
+      console.log(`Display rate set to ${hz} Hz`);
+    } catch(e) {
+      console.error('Failed to set display rate:', e);
+    }
+  });
   $('#fullscreenBtn')?.addEventListener('click', toggleFullscreen);
   $('#exitFullscreenBtn')?.addEventListener('click', toggleFullscreen);
   $('#editConfig')?.addEventListener('click', ()=>openConfigForm());
@@ -710,6 +931,8 @@ function wireUI(){
   $('#editMotor')?.addEventListener('click', ()=>openMotorEditor());
   $('#editLE')?.addEventListener('click', ()=>openLEEditor());  // Logic Elements
   $('#editMath')?.addEventListener('click', ()=>openMathEditor());  // Math Operators
+  $('#editExpr')?.addEventListener('click', ()=>openExpressionEditor());  // Expression Editor
+  $('#exprHelp')?.addEventListener('click', ()=>openExpressionHelp());  // Expression Help
   $('#editScript')?.addEventListener('click', ()=>openScriptEditor());
   $('#zeroAI')?.addEventListener('click', ()=>openZeroAIDialog());  // Zero AI channels
   $('#saveLayout')?.addEventListener('click', saveLayoutToFile);
@@ -829,6 +1052,81 @@ function connect(){
     const msg=JSON.parse(ev.data);
     if(msg.type==='session'){ sessionDir=msg.dir; $('#session').textContent=sessionDir; }
     if (msg.type === 'tick') feedTick(msg);
+    if (msg.type === 'batch' && msg.samples && msg.samples.length > 0) {
+      // Efficiently process batch: add all samples to chart buffers, then render once
+      const samples = msg.samples;
+      console.log(`[BATCH] Received ${samples.length} samples, adding to charts...`);
+      
+      // Debug: Check if DO values are changing
+      const doValues = samples.map(s => s.do?.[0]).filter(v => v !== undefined);
+      const uniqueDOs = [...new Set(doValues)];
+      if (uniqueDOs.length > 1) {
+        console.log(`[BATCH-DO] DO0 changed! Values: ${uniqueDOs.join(', ')} across ${samples.length} samples`);
+      }
+      
+      // Update state with the LAST sample (for widgets/buttons/current values)
+      const lastSample = samples[samples.length - 1];
+      if (lastSample.ai) state.ai = lastSample.ai;
+      if (lastSample.ao) state.ao = lastSample.ao;
+      if (lastSample.do) state.do = lastSample.do;
+      if (lastSample.tc) state.tc = lastSample.tc;
+      if (lastSample.pid) state.pid = lastSample.pid;
+      if (lastSample.motors) state.motors = lastSample.motors;
+      if (lastSample.le) state.le = lastSample.le;
+      if (lastSample.math) state.math = lastSample.math;
+      if (lastSample.expr) state.expr = lastSample.expr;
+      
+      // Add ALL samples to chart buffers efficiently
+      const t0 = performance.now() / 1000;
+      const acqRate = msg.acq_rate || 200; // Use actual rate from server, fallback to 200
+      const sampleInterval = 1.0 / acqRate; // Time between samples in seconds
+      
+      for (const p of state.pages) {
+        for (const w of p.widgets) {
+          if (w.type !== 'chart') continue;
+          
+          const buf = chartBuffers.get(w.id) || [];
+          const series = w.opts.series || [];
+          
+          // Add all samples to buffer with proper time spacing
+          samples.forEach((sample, idx) => {
+            // Spread samples backward in time (oldest first)
+            // If we have 200 samples at 200 Hz, they span 1 second
+            const t = t0 - (samples.length - 1 - idx) * sampleInterval;
+            const values = series.map(sel => {
+              switch(sel.kind) {
+                case 'ai': return sample.ai?.[sel.index] ?? 0;
+                case 'ao': return sample.ao?.[sel.index] ?? 0;
+                case 'do': return (sample.do?.[sel.index] ? 1 : 0);
+                case 'tc': return sample.tc?.[sel.index] ?? 0;
+                case 'pid': return sample.pid?.[sel.index]?.out ?? 0;
+                case 'math': return sample.math?.[sel.index]?.output ?? 0;
+                case 'expr': return sample.expr?.[sel.index]?.output ?? 0;
+                case 'button': return state.buttonVars?.[sel.index] ?? 0;
+                default: return 0;
+              }
+            });
+            buf.push({t, v: values});
+          });
+          
+          // Trim old data (but not when paused!)
+          if (!w.opts.paused) {
+            const chartSpan = Math.max(1, w.opts.span || 10);
+            const bufferDepth = chartSpan * 1.2;
+            while (buf.length && (t0 - buf[0].t) > bufferDepth) {
+              buf.shift();
+            }
+          }
+          
+          chartBuffers.set(w.id, buf);
+        }
+      }
+      
+      console.log(`[BATCH] Added ${samples.length} samples to ${state.pages.flatMap(p => p.widgets.filter(w => w.type === 'chart')).length} charts`);
+      
+      // Trigger single render update for widgets/buttons
+      updateDOButtons();
+    }
   };
   updateConnectBtn();
 }
@@ -920,6 +1218,12 @@ function addWidget(type){
   // Special handling for Math Op - fetch math config for name
   if (type === 'mathop') {
     addMathOpWidget();
+    return;
+  }
+  
+  // Special handling for Expression - fetch expr config for name
+  if (type === 'expr') {
+    addExprWidget();
     return;
   }
   
@@ -1201,17 +1505,83 @@ async function addMathOpWidget() {
   }
 }
 
+async function addExprWidget() {
+  try {
+    // Fetch expression configuration
+    const exprData = await (await fetch('/api/expressions')).json();
+    const expressions = exprData.expressions || [];
+    
+    if (expressions.length === 0) {
+      alert('No Expressions configured. Please configure Expressions first.');
+      return;
+    }
+    
+    // Create modal with dropdown selector
+    const root = el('div', {});
+    root.append(el('h3', {}, 'Select Expression'));
+    
+    const selector = el('select', {style: 'width:100%; font-size:14px; padding:8px'});
+    expressions.forEach((e, i) => {
+      const name = e.name || `Expr${i}`;
+      const enabled = e.enabled ? '✓' : '✗';
+      const label = `${name} (${enabled})`;
+      selector.append(el('option', {value: i}, label));
+    });
+    
+    root.append(
+      el('div', {style: 'margin:16px 0'}, [
+        el('label', {}, ['Expression: ', selector])
+      ])
+    );
+    
+    const addBtn = el('button', {
+      className: 'btn',
+      onclick: () => {
+        const exprIndex = parseInt(selector.value);
+        const exprName = expressions[exprIndex].name || `Expr${exprIndex}`;
+        
+        const w = {
+          id: crypto.randomUUID(),
+          type: 'expr',
+          x: 40,
+          y: 40,
+          w: 350,
+          h: 200,
+          opts: {
+            title: exprName,
+            exprIndex: exprIndex,
+            showSource: true,
+            showOutput: true
+          }
+        };
+        
+        state.pages[activePageIndex].widgets.push(w);
+        renderPage();
+        closeModal();
+      }
+    }, 'Add Widget');
+    
+    root.append(addBtn);
+    showModal(root);
+    
+  } catch(e) {
+    console.error('Failed to add Expression widget:', e);
+    alert('Failed to load Expression configuration.');
+  }
+}
+
 // Update defaultsFor to give charts reasonable initial spans:
 function defaultsFor(type){
   switch(type){
     case 'chart':    return { title:'Chart', series:[], span:60, paused:false, scale:'auto', min:0, max:10, filterHz:0, cursorMode:'follow' };
     case 'gauge':    return { title:'Gauge', needles:[], scale:'manual', min:0, max:10 };
     case 'bars':     return { title:'Bars', series:[], scale:'manual', min:0, max:10 };
-    case 'dobutton': return { title:'DO', doIndex:0, activeHigh:true, mode:'toggle', buzzHz:10, actuationTime:0, _timer:null };
+    case 'dobutton': return { title:'Button', outputType:'do', doIndex:0, varName:'button1', activeHigh:true, mode:'toggle', buzzHz:10, actuationTime:0, _timer:null };
     case 'pidpanel': return { title:'PID', loopIndex:0, showControls:true };
     case 'aoslider': return { title:'AO', aoIndex:0, min:0, max:10, step:0.0025, live:true };
     case 'motor':    return { title:'Motor', motorIndex:0, showControls:true };
     case 'mathop':   return { title:'Math', mathIndex:0, showInputs:true };
+    case 'expr':     return { title:'Expression', exprIndex:0, showSource:true, showOutput:true };
   }
   return {};
 }
@@ -1280,24 +1650,24 @@ async function createSignalSelector(kind, currentIndex, onChange) {
     
     if (kind === 'ai' || kind === 'ao') {
       const cfg = await (await fetch('/api/config')).json();
-      const list = kind === 'ai' ? (cfg.analogs || []) : (cfg.analogOutputs || cfg.ao || []);
+      const list = kind === 'ai' ? getAllAnalogs(cfg) : getAllAnalogOutputs(cfg);
       items = list.map((item, i) => ({
         index: i,
         name: item.name || `${kind.toUpperCase()}${i}`
       }));
     } else if (kind === 'do') {
       const cfg = await (await fetch('/api/config')).json();
-      const list = cfg.digitalOutputs || cfg.do || [];
+      const list = getAllDigitalOutputs(cfg);
       items = list.map((item, i) => ({
         index: i,
         name: item.name || `DO${i}`
       }));
     } else if (kind === 'tc') {
       const cfg = await (await fetch('/api/config')).json();
-      const tcCount = cfg.boardetc?.numChannels || 8;
-      items = Array.from({length: tcCount}, (_, i) => ({
+      const list = getAllThermocouples(cfg);
+      items = list.map((item, i) => ({
         index: i,
-        name: `TC${i}`
+        name: item.name || `TC${i}`
       }));
     } else if (kind === 'pid' || kind === 'pid_u') {
       const data = await (await fetch('/api/pid')).json();
@@ -1317,6 +1687,70 @@ async function createSignalSelector(kind, currentIndex, onChange) {
         index: i,
         name: le.name || `LE${i}`
       }));
+    } else if (kind === 'expr') {
+      const data = await (await fetch('/api/expressions')).json();
+      items = (data.expressions || []).map((e, i) => ({
+        index: i,
+        name: e.name || `Expr${i}`
+      }));
+    } else if (kind === 'static' || kind === 'global') {
+      // Global/static variables from expressions
+      const data = await (await fetch('/api/expressions/globals')).json();
+      const globals = data.globals || {};
+      const varNames = Object.keys(globals);
+      
+      varNames.forEach((name, i) => {
+        const opt = el('option', {value: name}, `static.${name}`);
+        select.append(opt);
+      });
+      
+      // For static variables, currentIndex is actually the variable name (string)
+      select.value = currentIndex || varNames[0] || '';
+      select.onchange = () => onChange(select.value);  // Pass name, not index
+      
+      return select;
+    } else if (kind === 'button') {
+      console.log('========================================');
+      console.log('BUTTON CASE HIT! Looking for button vars...');
+      console.log('state.pages:', state.pages);
+      // Button variables - scan all DO button widgets for varNames
+      const varNames = new Set();
+      
+      // Scan all pages for DO buttons with outputType='var'
+      let buttonCount = 0;
+      state.pages?.forEach(page => {
+        page.widgets?.forEach(w => {
+          if (w.type === 'dobutton') {
+            buttonCount++;
+            if (w.opts?.outputType === 'var' && w.opts?.varName) {
+                    varNames.add(w.opts.varName);
+            }
+          }
+        });
+      });
+      
+      // Also include any from current state
+      if (state.buttonVars) {
+        Object.keys(state.buttonVars).forEach(name => varNames.add(name));
+      }
+      
+      const varArray = Array.from(varNames).sort();
+      
+      if (varArray.length === 0) {
+        select.append(el('option', {value: ''}, '(No button vars defined)'));
+        select.disabled = true;
+      } else {
+        varArray.forEach(name => {
+          const opt = el('option', {value: name}, `btn:${name}`);
+          select.append(opt);
+        });
+      }
+      
+      // For button variables, currentIndex is the variable name (string)
+      select.value = currentIndex || varArray[0] || '';
+      select.onchange = () => onChange(select.value);  // Pass name, not index
+      
+      return select;
     }
     
     items.forEach(item => {
@@ -1391,11 +1825,13 @@ function openWidgetSettings(w) {
         s.displayScale = s.displayScale !== undefined ? s.displayScale : 1.0;
         s.displayOffset = s.displayOffset !== undefined ? s.displayOffset : 0.0;
 
-        const kindSel = selectEnum(['ai', 'ao', 'do', 'tc', 'pid', 'math'], s.kind || 'ai', async v => {
+        const kindSel = selectEnum(['ai', 'ao', 'do', 'tc', 'pid', 'math', 'expr', 'button'], s.kind || 'ai', async v => {
           s.kind = v;
           s.name = s.name || labelFor(s);
           // Rebuild selector when kind changes
-          const newSel = await createSignalSelector(v, s.index || 0, newIdx => s.index = newIdx);
+          // For button/static vars, use empty string if no index, otherwise use 0
+          const defaultIndex = (v === 'button' || v === 'static') ? (s.index || '') : (s.index || 0);
+          const newSel = await createSignalSelector(v, defaultIndex, newIdx => s.index = newIdx);
           signalSel.replaceWith(newSel);
           signalSel = newSel;
         });
@@ -1405,7 +1841,10 @@ function openWidgetSettings(w) {
         
         // Async load signal selector
         (async () => {
-          const newSel = await createSignalSelector(s.kind || 'ai', s.index || 0, newIdx => {
+          const kind = s.kind || 'ai';
+          // For button/static vars, use empty string if no index, otherwise use 0
+          const defaultIndex = (kind === 'button' || kind === 'static') ? (s.index || '') : (s.index || 0);
+          const newSel = await createSignalSelector(kind, defaultIndex, newIdx => {
             s.index = newIdx;
             s.name = s.name || labelFor(s);
           });
@@ -1479,16 +1918,75 @@ function openWidgetSettings(w) {
     }, '+ Add');
     redrawList();
     root.append(el('h4', {}, (w.type === 'gauge' ? 'Needles' : 'Series')), list, el('div', {style: 'margin-top:8px'}, add));
+    
+    // Add Scale Op checkbox and divisions for gauges
+    if (w.type === 'gauge') {
+      const scaleOpChk = inputChk(w.opts, 'scaleOp');
+      scaleOpChk.onchange = () => {
+        w.opts.scaleOp = scaleOpChk.checked;
+        if (!w.opts.scaleOp) {
+          // Clear tare offsets when disabling
+          delete w.opts.tareOffsets;
+        }
+      };
+      
+      // Set default divisions if not set
+      if (w.opts.divisions === undefined) w.opts.divisions = 5;
+      
+      root.append(
+        el('hr', {className: 'soft', style: 'margin:16px 0'}),
+        tableForm([
+          ['Scale Operation Mode (enables Tare button)', scaleOpChk],
+          ['Number of Divisions (tick marks)', inputNum(w.opts, 'divisions', 1)]
+        ])
+      );
+    }
   }
 
   if (w.type === 'dobutton') {
-    const modeSel = selectEnum(['toggle', 'momentary', 'buzz'], w.opts.mode || 'toggle', v => w.opts.mode = v);
-    root.append(tableForm([
-      ['Title', titleInput],
-      ['Index', inputNum(w.opts, 'doIndex', 1)], ['Active High', inputChk(w.opts, 'activeHigh')],
-      ['Mode', modeSel], ['Buzz Hz', inputNum(w.opts, 'buzzHz', 10)],
-      ['Actuation Time (s, toggle)', inputNum(w.opts, 'actuationTime', 0.01)]
-    ]));
+    // Ensure outputType exists
+    w.opts.outputType = w.opts.outputType || 'do';
+    w.opts.varName = w.opts.varName || 'button1';
+    
+    const outputTypeSel = selectEnum(['do', 'var'], w.opts.outputType, v => {
+      w.opts.outputType = v;
+      renderSettingsRows();
+    });
+    
+    const renderSettingsRows = () => {
+      const isDO = w.opts.outputType === 'do';
+      const rows = [
+        ['Title', titleInput],
+        ['Output Type', outputTypeSel]
+      ];
+      
+      if (isDO) {
+        rows.push(['DO Index', inputNum(w.opts, 'doIndex', 1)]);
+        rows.push(['Active High', inputChk(w.opts, 'activeHigh')]);
+      } else {
+        const varInput = el('input', {type: 'text', value: w.opts.varName || 'button1'});
+        varInput.oninput = () => w.opts.varName = varInput.value;
+        rows.push(['Variable Name', varInput]);
+      }
+      
+      const modeSel = selectEnum(['toggle', 'momentary', 'buzz'], w.opts.mode || 'toggle', v => w.opts.mode = v);
+      rows.push(['Mode', modeSel]);
+      
+      if (isDO && w.opts.mode === 'buzz') {
+        rows.push(['Buzz Hz', inputNum(w.opts, 'buzzHz', 10)]);
+      }
+      
+      if (w.opts.mode === 'toggle') {
+        rows.push(['Actuation Time (s)', inputNum(w.opts, 'actuationTime', 0.01)]);
+      }
+      
+      // Clear and rebuild
+      const existing = root.querySelector('table');
+      if (existing) existing.remove();
+      root.append(tableForm(rows));
+    };
+    
+    renderSettingsRows();
   }
 
   if (w.type === 'aoslider') {
@@ -1663,6 +2161,40 @@ function openWidgetSettings(w) {
     })();
   }
 
+  if (w.type === 'expr') {
+    // Async load expressions for dropdown
+    (async () => {
+      try {
+        const exprData = await (await fetch('/api/expressions')).json();
+        const expressions = exprData.expressions || [];
+
+        const exprSelector = el('select', {});
+        expressions.forEach((e, i) => {
+          const name = e.name || `Expr${i}`;
+          const enabled = e.enabled ? '✓' : '✗';
+          exprSelector.append(el('option', {value: i}, `${name} (${enabled})`));
+        });
+        exprSelector.value = w.opts.exprIndex || 0;
+        exprSelector.onchange = () => {
+          w.opts.exprIndex = parseInt(exprSelector.value);
+          renderPage();
+        };
+
+        root.append(tableForm([
+          ['Expression', exprSelector],
+          ['Show Variables', inputChk(w.opts, 'showSource')],
+          ['Show Output', inputChk(w.opts, 'showOutput')]
+        ]));
+      } catch (e) {
+        root.append(tableForm([
+          ['Expression Index', inputNum(w.opts, 'exprIndex', 1)],
+          ['Show Variables', inputChk(w.opts, 'showSource')],
+          ['Show Output', inputChk(w.opts, 'showOutput')]
+        ]));
+      }
+    })();
+  }
+
   showModal(root, () => {
     renderPage();
   });
@@ -1689,18 +2221,29 @@ function renderWidget(w){
   if (w.type === 'mathop') classList += ' mathop-widget';
   if (w.type === 'pidpanel') classList += ' pidpanel-widget';
   if (w.type === 'bars') classList += ' bars-widget';
+  if (w.type === 'expr') classList += ' expr-widget';
   const box=el('div',{className:classList, id:'w_'+w.id});
   
   // LE and mathop widgets get minimal headers (via CSS)
   const isCompact = (w.type === 'le' || w.type === 'mathop');
   
   // LE widgets don't need settings - only close button
-  const toolButtons = w.type === 'le' 
-    ? [el('span',{className:'icon', title:'Close', onclick:()=>removeWidget(w.id)}, '×')]
-    : [
-        el('span',{className:'icon', title:'Settings', onclick:()=>openWidgetSettings(w)}, '⚙'),
-        el('span',{className:'icon', title:'Close',    onclick:()=>removeWidget(w.id)}, '×')
-      ];
+  let toolButtons;
+  if (w.type === 'le') {
+    toolButtons = [el('span',{className:'icon', title:'Close', onclick:()=>removeWidget(w.id)}, '×')];
+  } else if (w.type === 'expr') {
+    // Expression widgets get debug button
+    toolButtons = [
+      el('span',{className:'icon', title:'Debug View', onclick:()=>openExpressionDebug(w)}, '🔍'),
+      el('span',{className:'icon', title:'Settings', onclick:()=>openWidgetSettings(w)}, '⚙'),
+      el('span',{className:'icon', title:'Close',    onclick:()=>removeWidget(w.id)}, '×')
+    ];
+  } else {
+    toolButtons = [
+      el('span',{className:'icon', title:'Settings', onclick:()=>openWidgetSettings(w)}, '⚙'),
+      el('span',{className:'icon', title:'Close',    onclick:()=>removeWidget(w.id)}, '×')
+    ];
+  }
   
   const tools=el('div',{className:'tools'}, toolButtons);
   const header=el('header',{},[
@@ -1722,6 +2265,7 @@ function renderWidget(w){
     case 'motor':    mountMotorController(w,body); break;
     case 'le':       mountLEWidget(w,body); break;
     case 'mathop':   mountMathOpWidget(w,body); break;
+    case 'expr':     mountExprWidget(w,body); break;
   }
   return box;
 }
@@ -2367,9 +2911,11 @@ function updateChartBuffers(){
       const chartSpan = Math.max(1, w.opts.span || 10);
       const bufferDepth = chartSpan * 1.2; // Keep 20% extra for smooth scrolling
 
-      // Remove old data beyond the buffer depth
-      while (buf.length && (t - buf[0].t) > bufferDepth) {
-        buf.shift();
+      // Remove old data beyond the buffer depth (but not when paused!)
+      if (!w.opts.paused) {
+        while (buf.length && (t - buf[0].t) > bufferDepth) {
+          buf.shift();
+        }
       }
       chartBuffers.set(w.id,buf);
     }
@@ -2379,10 +2925,10 @@ function updateChartBuffers(){
 function labelFor(sel){
   if (!configCache) return `${sel.kind.toUpperCase()}${sel.index}`;
   try{
-    if(sel.kind==='ai'){ return configCache.analogs?.[sel.index]?.name || `AI${sel.index}`; }
-    if(sel.kind==='ao'){ return configCache.analogOutputs?.[sel.index]?.name || `AO${sel.index}`; }
-    if(sel.kind==='do'){ return configCache.digitalOutputs?.[sel.index]?.name || `DO${sel.index}`; }
-    if(sel.kind==='tc'){ return configCache.thermocouples?.[sel.index]?.name || `TC${sel.index}`; }
+    if(sel.kind==='ai'){ return getAllAnalogs(configCache)?.[sel.index]?.name || `AI${sel.index}`; }
+    if(sel.kind==='ao'){ return getAllAnalogOutputs(configCache)?.[sel.index]?.name || `AO${sel.index}`; }
+    if(sel.kind==='do'){ return getAllDigitalOutputs(configCache)?.[sel.index]?.name || `DO${sel.index}`; }
+    if(sel.kind==='tc'){ return getAllThermocouples(configCache)?.[sel.index]?.name || `TC${sel.index}`; }
     if(sel.kind==='pid'){ 
       // Fetch PID name from cache if available
       if (window.pidCache && window.pidCache.loops && window.pidCache.loops[sel.index]) {
@@ -2390,12 +2936,105 @@ function labelFor(sel){
       }
       return `PID${sel.index}`;
     }
+    if(sel.kind==='math'){
+      if (window.mathCache && window.mathCache.operators && window.mathCache.operators[sel.index]) {
+        return window.mathCache.operators[sel.index].name || `Math${sel.index}`;
+      }
+      return `Math${sel.index}`;
+    }
+    if(sel.kind==='expr'){
+      if (window.exprCache && window.exprCache.expressions && window.exprCache.expressions[sel.index]) {
+        return window.exprCache.expressions[sel.index].name || `Expr${sel.index}`;
+      }
+      return `Expr${sel.index}`;
+    }
+    if(sel.kind==='button'){
+      // For button vars, sel.index is the variable name
+      return `btn:${sel.index}`;
+    }
   }catch{}
   return `${sel.kind.toUpperCase()}${sel.index}`;
 }
 
 /* ------------------------------- gauge ---------------------------------- */
 function mountGauge(w, body){
+  // Set default decimal places
+  if (w.opts.decimals === undefined) w.opts.decimals = 3;
+  
+  // Add decimal places control
+  const decimalsControl = el('div', {style: 'display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px'}, [
+    el('label', {}, 'Decimals:'),
+    el('input', {
+      type: 'number',
+      min: 0,
+      max: 6,
+      value: w.opts.decimals,
+      style: 'width:50px;padding:2px 4px',
+      oninput: (e) => {
+        w.opts.decimals = parseInt(e.target.value) || 0;
+        saveLayout();
+      }
+    })
+  ]);
+  body.append(decimalsControl);
+  
+  // Add Tare button if scaleOp is enabled
+  if (w.opts.scaleOp) {
+    const tareBtn = el('button', {
+      className: 'btn',
+      style: 'position:absolute;top:4px;left:50%;transform:translateX(-50%);font-size:11px;padding:4px 8px;z-index:10;background:#4a9eff;color:#0d1117',
+      onclick: async () => {
+        if (tareBtn.disabled) return; // Prevent double-click
+        
+        tareBtn.disabled = true;
+        tareBtn.textContent = 'Taring...';
+        
+        try {
+          // Collect samples for 2 seconds
+          const samples = {};
+          const needles = w.opts.needles || [];
+          needles.forEach((needle, idx) => {
+            samples[idx] = [];
+          });
+          
+          const sampleInterval = setInterval(() => {
+            needles.forEach((needle, idx) => {
+              const v = readSelection(needle);
+              if (Number.isFinite(v)) {
+                samples[idx].push(v);
+              }
+            });
+          }, 50); // Sample at 20 Hz
+          
+          // Wait 2 seconds
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          clearInterval(sampleInterval);
+          
+          // Calculate averages and store as tare offsets
+          w.opts.tareOffsets = {};
+          needles.forEach((needle, idx) => {
+            if (samples[idx].length > 0) {
+              const avg = samples[idx].reduce((a, b) => a + b, 0) / samples[idx].length;
+              w.opts.tareOffsets[idx] = -avg; // Negative to zero it out
+              console.log(`[GAUGE] Needle ${idx} tared: avg=${avg.toFixed(3)}, offset=${w.opts.tareOffsets[idx].toFixed(3)}`);
+            }
+          });
+          
+          // Save layout to persist tare offsets
+          saveLayout();
+          
+        } catch(e) {
+          console.error('[GAUGE] Tare error:', e);
+        } finally {
+          // Always re-enable button
+          tareBtn.disabled = false;
+          tareBtn.textContent = 'Tare';
+        }
+      }
+    }, 'Tare');
+    body.append(tareBtn);
+  }
+  
   const legend=el('div',{className:'legend'}); body.append(legend);
   const canvas=el('canvas'); body.append(canvas);
   const ctx=canvas.getContext('2d');
@@ -2410,11 +3049,12 @@ function mountGauge(w, body){
 
     let lo=w.opts.min, hi=w.opts.max;
     if (w.opts.scale==='auto'){
-      const vals=(w.opts.needles||[]).map(needle => {
+      const vals=(w.opts.needles||[]).map((needle, idx) => {
         const v = readSelection(needle);
+        const tareOffset = (w.opts.tareOffsets && w.opts.tareOffsets[idx]) || 0;
         const displayScale = needle.displayScale !== undefined ? needle.displayScale : 1.0;
         const displayOffset = needle.displayOffset !== undefined ? needle.displayOffset : 0.0;
-        return (v * displayScale) + displayOffset;
+        return ((v + tareOffset) * displayScale) + displayOffset;
       });
       lo=Math.min(...vals,0); hi=Math.max(...vals,1);
       if(lo===hi){ lo-=1; hi+=1; }
@@ -2455,7 +3095,7 @@ function mountGauge(w, body){
     // ticks + labels (upper semicircle; canvas Y is downward, so subtract sin)
     ctx.fillStyle='#a8b3cf'; ctx.font='12px system-ui';
     ctx.strokeStyle='#3b425e';
-    const tickCount=10;
+    const tickCount = w.opts.divisions !== undefined ? w.opts.divisions : 5;
     const tickLen=Math.max(3, Math.min(16, Math.floor(rOuter * 0.12)));
     for(let i=0;i<=tickCount;i++){
       const t = i / tickCount;
@@ -2468,7 +3108,8 @@ function mountGauge(w, body){
       ctx.lineTo(cx + r1*cos, cy - r1*sin);
       ctx.stroke();
 
-      const val=(lo + t*span).toFixed(2);
+      const decimals = w.opts.decimals !== undefined ? w.opts.decimals : 3;
+      const val=(lo + t*span).toFixed(decimals);
       ctx.textAlign='center';
       ctx.fillText(val, cx + (rInner - 30)*cos, cy - (rInner - 30)*sin + 4);
     }
@@ -2487,9 +3128,10 @@ function mountGauge(w, body){
     ctx.lineWidth=3;
     needles.forEach((s,si)=>{
       const v = readSelection(s);
+      const tareOffset = (w.opts.tareOffsets && w.opts.tareOffsets[si]) || 0;
       const displayScale = s.displayScale !== undefined ? s.displayScale : 1.0;
       const displayOffset = s.displayOffset !== undefined ? s.displayOffset : 0.0;
-      const displayValue = (v * displayScale) + displayOffset;
+      const displayValue = ((v + tareOffset) * displayScale) + displayOffset;
       
       const frac = clamp((displayValue - lo)/span, 0, 1);
       const ang = Math.PI + (0 - Math.PI) * frac;
@@ -2501,8 +3143,9 @@ function mountGauge(w, body){
       ctx.stroke();
 
       const lab = s.name && s.name.length ? s.name : labelFor(s);
+      const decimals = w.opts.decimals !== undefined ? w.opts.decimals : 3;
       legend.append(el('div',{className:'item'},[
-        el('span',{className:'swatch', style:`background:${colorFor(si)}`},''), `${lab}: ${Number.isFinite(v)?v.toFixed(3):'—'}`
+        el('span',{className:'swatch', style:`background:${colorFor(si)}`},''), `${lab}: ${Number.isFinite(displayValue)?displayValue.toFixed(decimals):'—'}`
       ]));
     });
 
@@ -2631,26 +3274,51 @@ function mountBars(w, body){
 function logicalActive(bit,activeHigh){ return activeHigh ? !!bit : !bit; }
 
 function mountDOButton(w, body){
-  const b=el('button',{className:'do-btn default'}, w.opts.title||'DO');
+  const b=el('button',{className:'do-btn default'}, w.opts.title||'Button');
   body.append(b);
 
   let actTimer=null;
-  let isDown = false;        // only this widget acts on global pointerup/blur
-  let buzzing = false;       // (keep your existing buzzing if present)
+  let isDown = false;
+  let buzzing = false;
+  
+  // Initialize variable state if using var mode
+  if (w.opts.outputType === 'var' && !state.buttonVars) {
+    state.buttonVars = {};
+  }
+  if (w.opts.outputType === 'var') {
+    state.buttonVars[w.opts.varName] = state.buttonVars[w.opts.varName] || 0;
+  }
 
   const clearActTimer=()=>{ if (actTimer){ clearTimeout(actTimer); actTimer=null; } };
 
-  const setRaw = async(bit)=>{
-    try{
-      await fetch('/api/do/set',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({index:w.opts.doIndex, state:!!bit, active_high:!!w.opts.activeHigh})
-      });
-    }catch(e){ console.warn('DO set failed', e); }
+  const setOutput = async(value)=>{
+    if (w.opts.outputType === 'var') {
+      // Set variable state
+      if (!state.buttonVars) state.buttonVars = {};
+      state.buttonVars[w.opts.varName] = value ? 1 : 0;
+      
+      // Sync to backend for expressions
+      try {
+        await fetch('/api/button_vars', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({vars: state.buttonVars})
+        });
+      } catch(e) { console.warn('ButtonVars sync failed', e); }
+    } else {
+      // Set DO hardware
+      try{
+        await fetch('/api/do/set',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({index:w.opts.doIndex, state:!!value, active_high:!!w.opts.activeHigh})
+        });
+      }catch(e){ console.warn('DO set failed', e); }
+    }
   };
 
   const startBuzz = async()=>{
+    if (w.opts.outputType === 'var') return; // Buzz only works with DO
     if (buzzing) return;
     buzzing=true;
     try{
@@ -2663,55 +3331,63 @@ function mountDOButton(w, body){
   };
 
   const stopBuzz = async()=>{
-      try{
-        await fetch('/api/do/buzz/stop', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ index: w.opts.doIndex })
-        });
-      }catch(e){ console.warn('Buzz stop failed', e); }
-      buzzing = false;
-      b.dataset.buzz = '0';
+    if (w.opts.outputType === 'var') return; // Buzz only works with DO
+    try{
+      await fetch('/api/do/buzz/stop', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ index: w.opts.doIndex })
+      });
+    }catch(e){ console.warn('Buzz stop failed', e); }
+    buzzing = false;
+    b.dataset.buzz = '0';
   };
-
 
   // Toggle with optional actuationTime (auto-off)
   b.addEventListener('click', async ()=>{
     if(!connected) return;
     if(w.opts.mode!=='toggle') return;
     clearActTimer();
-    const bit=state.do[w.opts.doIndex]|0;     // current RAW bit
-    const want=!bit;                          // flip
-    await setRaw(want);
+    
+    // Get current state
+    let bit;
+    if (w.opts.outputType === 'var') {
+      bit = state.buttonVars?.[w.opts.varName] || 0;
+    } else {
+      bit = state.do[w.opts.doIndex]|0;
+    }
+    
+    const want=!bit;
+    await setOutput(want);
+    
     const ms = Math.max(0, (w.opts.actuationTime||0)*1000);
     if (ms>0){
-      const original=bit;                     // restore original raw state after pulse
-      actTimer=setTimeout(()=>{ setRaw(original); }, ms);
+      const original=bit;
+      actTimer=setTimeout(()=>{ setOutput(original); }, ms);
     }
   });
 
   // Momentary & Buzz via pointer events
   const onDown = ()=>{
     if (!connected) return;
-    if (isDown) return;        // ignore repeats
+    if (isDown) return;
     isDown = true;
-    if (w.opts.mode === 'momentary'){ clearActTimer(); setRaw(1); }
+    if (w.opts.mode === 'momentary'){ clearActTimer(); setOutput(1); }
     if (w.opts.mode === 'buzz'){ stopBuzz().finally(startBuzz); }
   };
 
   const onUp = ()=>{
     if (!connected) return;
-    if (!isDown) return;       // only the pressed widget reacts
+    if (!isDown) return;
     isDown = false;
 
-    if (w.opts.mode === 'momentary'){ setRaw(0); }
+    if (w.opts.mode === 'momentary'){ setOutput(0); }
     if (w.opts.mode === 'buzz'){
       stopBuzz().finally(()=>{
-        setRaw(0).finally(()=>{ setTimeout(()=>stopBuzz(), 150); });
+        setOutput(0).finally(()=>{ setTimeout(()=>stopBuzz(), 150); });
       });
     }
   };
-
 
   b.addEventListener('pointerdown', onDown);
   b.addEventListener('pointerup', onUp);
@@ -2719,7 +3395,6 @@ function mountDOButton(w, body){
   window.addEventListener('pointerup', onUp);
   window.addEventListener('blur', onUp);
   document.addEventListener('visibilitychange', ()=>{ if(document.hidden) onUp(); });
-  // extra safety: stop buzz if we ever disconnect
   window.addEventListener('beforeunload', ()=>{ if (buzzing) { navigator.sendBeacon && navigator.sendBeacon('/api/do/buzz/stop', JSON.stringify({index:w.opts.doIndex})); } });
 
   updateDOButtons();
@@ -2732,10 +3407,21 @@ function updateDOButtons(){
     const page=state.pages[activePageIndex];
     const w=page.widgets.find(x=>x.id===id);
     if(!w){ b.className='do-btn default'; return; }
-    const bit=state.do[w.opts.doIndex]|0;
-    const active=logicalActive(bit, !!w.opts.activeHigh);
+    
+    let bit, active;
+    if (w.opts.outputType === 'var') {
+      // Variables: simple logic, 1 = active (green), 0 = inactive (red)
+      bit = state.buttonVars?.[w.opts.varName] || 0;
+      active = !!bit;  // 1 = true = active
+    } else {
+      // Hardware DOs: respect active-high setting for relay inversion
+      bit = state.do[w.opts.doIndex]|0;
+      active = logicalActive(bit, !!w.opts.activeHigh);
+    }
+    
+    // Standard mapping: active=green, inactive=red
     b.className='do-btn '+(active?'active':'inactive');
-    b.textContent = w.opts.title || 'DO';
+    b.textContent = w.opts.title || 'Button';
   });
 }
 
@@ -2845,18 +3531,18 @@ function mountPIDPanel(w, body){
       let outputChSel = await createSignalSelector(L.kind === 'analog' ? 'ao' : 'do', L.out_ch || 0, newIdx => L.out_ch = newIdx);
       
       // Create SP channel selector (will be rebuilt when sp_source changes)
-      let spChSel = (L.sp_source === 'ao' || L.sp_source === 'math' || L.sp_source === 'pid') 
+      let spChSel = (L.sp_source === 'ao' || L.sp_source === 'math' || L.sp_source === 'pid' || L.sp_source === 'expr' || L.sp_source === 'static') 
         ? await createSignalSelector(L.sp_source, L.sp_channel || 0, newIdx => L.sp_channel = newIdx)
         : num(L, 'sp_channel', 1);
       
       // Create out_min channel selector
-      let outMinChSel = (L.out_min_source === 'math')
-        ? await createSignalSelector('math', L.out_min_channel || 0, newIdx => L.out_min_channel = newIdx)
+      let outMinChSel = (L.out_min_source === 'math' || L.out_min_source === 'expr')
+        ? await createSignalSelector(L.out_min_source, L.out_min_channel || 0, newIdx => L.out_min_channel = newIdx)
         : num(L, 'out_min_channel', 1);
       
       // Create out_max channel selector
-      let outMaxChSel = (L.out_max_source === 'math')
-        ? await createSignalSelector('math', L.out_max_channel || 0, newIdx => L.out_max_channel = newIdx)
+      let outMaxChSel = (L.out_max_source === 'math' || L.out_max_source === 'expr')
+        ? await createSignalSelector(L.out_max_source, L.out_max_channel || 0, newIdx => L.out_max_channel = newIdx)
         : num(L, 'out_max_channel', 1);
       
       // Function to update visibility (will be called after rows are created)
@@ -2880,7 +3566,7 @@ function mountPIDPanel(w, body){
         updateVisibility();
       });
       
-      const selSrc = selectEnum(['ai','ao','tc','pid','math'], L.src ||'ai', async v => {
+      const selSrc = selectEnum(['ai','ao','tc','pid','math','expr','static'], L.src ||'ai', async v => {
         L.src = v;
         // Rebuild input selector when source changes
         const newInputSel = await createSignalSelector(v, L.ai_ch || 0, newIdx => L.ai_ch = newIdx);
@@ -2896,10 +3582,10 @@ function mountPIDPanel(w, body){
       row('input',  inputChSel);
       outputRow = row('output', outputChSel);
       spValueRow = row('SP Value', num(L,'target',0.0001));
-      row('SP Src', selectEnum(['fixed','ao','pid','math'], L.sp_source||'fixed', async v => {
+      row('SP Src', selectEnum(['fixed','ao','pid','math','expr','static'], L.sp_source||'fixed', async v => {
         L.sp_source = v;
         // Rebuild SP channel selector when source changes
-        const newSpChSel = (v === 'ao' || v === 'math' || v === 'pid')
+        const newSpChSel = (v === 'ao' || v === 'math' || v === 'pid' || v === 'expr')
           ? await createSignalSelector(v, L.sp_channel || 0, newIdx => L.sp_channel = newIdx)
           : num(L, 'sp_channel', 1);
         spChSel.replaceWith(newSpChSel);
@@ -2908,17 +3594,15 @@ function mountPIDPanel(w, body){
       }));
       spChRow = row('SP Ch', spChSel);
       
-      updateVisibility(); // Set initial visibility
-      
       row('kp',     num(L,'kp',0.0001));
       row('ki',     num(L,'ki',0.0001));
       row('kd',     num(L,'kd',0.0001));
       
       outMinValueRow = row('Out Min', num(L,'out_min',0.0001));
-      row('Out Min Src', selectEnum(['fixed','math'], L.out_min_source||'fixed', async v => {
+      row('Out Min Src', selectEnum(['fixed','math','expr'], L.out_min_source||'fixed', async v => {
         L.out_min_source = v;
-        const newSel = (v === 'math')
-          ? await createSignalSelector('math', L.out_min_channel || 0, newIdx => L.out_min_channel = newIdx)
+        const newSel = (v === 'math' || v === 'expr')
+          ? await createSignalSelector(v, L.out_min_channel || 0, newIdx => L.out_min_channel = newIdx)
           : num(L, 'out_min_channel', 1);
         outMinChSel.replaceWith(newSel);
         outMinChSel = newSel;
@@ -2927,16 +3611,18 @@ function mountPIDPanel(w, body){
       outMinChRow = row('Out Min Ch', outMinChSel);
       
       outMaxValueRow = row('Out Max', num(L,'out_max',0.0001));
-      row('Out Max Src', selectEnum(['fixed','math'], L.out_max_source||'fixed', async v => {
+      row('Out Max Src', selectEnum(['fixed','math','expr'], L.out_max_source||'fixed', async v => {
         L.out_max_source = v;
-        const newSel = (v === 'math')
-          ? await createSignalSelector('math', L.out_max_channel || 0, newIdx => L.out_max_channel = newIdx)
+        const newSel = (v === 'math' || v === 'expr')
+          ? await createSignalSelector(v, L.out_max_channel || 0, newIdx => L.out_max_channel = newIdx)
           : num(L, 'out_max_channel', 1);
         outMaxChSel.replaceWith(newSel);
         outMaxChSel = newSel;
         updateVisibility();
       }));
       outMaxChRow = row('Out Max Ch', outMaxChSel);
+      
+      updateVisibility(); // Set initial visibility AFTER all row variables are assigned
       
       row('err_min',num(L,'err_min',0.0001));
       row('err_max',num(L,'err_max',0.0001));
@@ -2966,15 +3652,11 @@ function mountPIDPanel(w, body){
       
       // Update enable indicator if gating is configured
       if (pidConfig && pidConfig.enable_gate) {
-        let enabled = false;
+        // Use gate_value from telemetry (more accurate, includes math/expr)
+        const gateValue = loop.gate_value !== undefined ? loop.gate_value : 0.0;
+        const enabled = gateValue >= 1.0;
         
-        if (pidConfig.enable_kind === 'do') {
-          enabled = state.do?.[pidConfig.enable_index] ? true : false;
-        } else if (pidConfig.enable_kind === 'le') {
-          enabled = state.le?.[pidConfig.enable_index]?.output ? true : false;
-        }
-        
-        const statusText = enabled ? '1' : '0';
+        const statusText = gateValue.toFixed(1);
         const color = enabled ? '#2faa60' : '#d84a4a';
         const gated = loop.gated ? ' (GATED)' : '';
         
@@ -3445,6 +4127,45 @@ function mountLEWidget(w, body){
           return {label: `Math${ch}`, val, detail};
         }
       }
+      else if (kind === 'expr') {
+        // Expression output
+        const exprData = state.expr?.[ch];
+        const rawVal = exprData?.output ?? (typeof exprData === 'number' ? exprData : 0);
+        
+        // Check if there's a comparison configured
+        if (inputCfg.comparison) {
+          const comp = inputCfg.comparison;
+          let compVal = 0;
+          
+          if (inputCfg.compare_to_type === 'signal') {
+            const cKind = inputCfg.compare_to_kind || 'ai';
+            const cCh = inputCfg.compare_to_index || 0;
+            if (cKind === 'ai') compVal = state.ai?.[cCh] ?? 0;
+            else if (cKind === 'ao') compVal = state.ao?.[cCh] ?? 0;
+            else if (cKind === 'tc') compVal = state.tc?.[cCh] ?? 0;
+            else if (cKind === 'pid_u') compVal = state.pid?.[cCh]?.u ?? 0;
+            else if (cKind === 'math') compVal = state.math?.[cCh]?.output ?? 0;
+            else if (cKind === 'expr') compVal = state.expr?.[cCh]?.output ?? 0;
+          } else {
+            compVal = inputCfg.compare_value ?? 0;
+          }
+          
+          let result = false;
+          if (comp === 'lt') result = rawVal < compVal;
+          else if (comp === 'eq') result = Math.abs(rawVal - compVal) < 0.001;
+          else result = rawVal > compVal;
+          
+          val = result ? '1' : '0';
+          const compSym = comp === 'lt' ? '<' : (comp === 'eq' ? '=' : '>');
+          detail = `${rawVal.toFixed(1)}${compSym}${compVal.toFixed(1)}`;
+          return {label: `Expr${ch}`, val, detail};
+        } else {
+          // No comparison - use >= 1.0 as boolean
+          val = rawVal >= 1.0 ? '1' : '0';
+          detail = rawVal.toFixed(2);
+          return {label: `Expr${ch}`, val, detail};
+        }
+      }
       
       return {label: '?', val: '?', detail: ''};
     };
@@ -3670,6 +4391,139 @@ function mountMathOpWidget(w, body){
   })();
 }
 
+/* ------------------------ Expression Widget ---------------------------- */
+function mountExprWidget(w, body){
+  body.style.padding = '8px';
+  body.style.fontSize = '12px';
+  body.style.fontFamily = 'Consolas, Monaco, Courier New, monospace';
+  
+  (function update(){
+    const idx = w.opts.exprIndex ?? 0;
+    const showSource = w.opts.showSource !== false;
+    const showOutput = w.opts.showOutput !== false;
+    
+    // Clear body
+    body.innerHTML = '';
+    
+    // Debug logging
+    
+    if (!state.expr || !Array.isArray(state.expr) || state.expr.length === 0) {
+      body.append(el('div', {
+        className:'expr-error',
+        textContent: 'Expression system not initialized'
+      }));
+      setTimeout(update, 1000);
+      return;
+    }
+    
+    const exprData = state.expr[idx];
+    
+    // Debug logging for exprData
+    
+    // Check if data is a number (initial state) vs object (real telemetry)
+    if (typeof exprData === 'number') {
+      body.append(el('div', {
+        className:'expr-error',
+        textContent: 'Waiting for expression data...'
+      }));
+      setTimeout(update, 1000);
+      return;
+    }
+    
+    if (!exprData) {
+      body.append(el('div', {
+        className:'expr-error',
+        textContent: `Expression ${idx} not found`
+      }));
+      setTimeout(update, 1000);
+      return;
+    }
+    
+    if (!exprData.enabled) {
+      body.append(el('div', {
+        className:'expr-disabled',
+        textContent: 'Expression disabled'
+      }));
+      setTimeout(update, 1000);
+      return;
+    }
+    
+    if (exprData.error) {
+      const errorDiv = el('div', {className:'expr-error'});
+      errorDiv.append(
+        el('div', {style:'font-weight:600;margin-bottom:4px'}, '⚠️ Error'),
+        el('div', {style:'font-size:11px'}, exprData.error)
+      );
+      body.append(errorDiv);
+      setTimeout(update, 1000);
+      return;
+    }
+    
+    // Display variables
+    if (showSource && exprData.locals) {
+      
+      const varsDiv = el('div', {className:'expr-vars'});
+      
+      const locals = exprData.locals || {};
+      for (const [name, value] of Object.entries(locals)) {
+
+        const varRow = el('div', {className:'expr-var-row'});
+        varRow.append(
+          el('span', {className:'expr-var-name'}, name),
+          el('span', {className:'expr-var-eq'}, ' = '),
+          el('span', {
+            className:'expr-var-value',
+            style: `color: ${getValueColor(value)}`
+          }, formatValue(value))
+        );
+        varsDiv.append(varRow);
+      }
+      
+      body.append(varsDiv);
+    }
+    
+    // Display hardware writes
+    const hwWrites = exprData.hw_writes || [];
+    if (hwWrites.length > 0) {
+      const hwDiv = el('div', {className:'expr-hw-writes'});
+      hwDiv.append(el('div', {className:'expr-section-label'}, '⚡ Hardware Writes'));
+      
+      for (const hw of hwWrites) {
+        const hwRow = el('div', {className:'expr-hw-row'});
+        hwRow.append(
+          el('span', {className:'expr-hw-type'}, hw.type.toUpperCase()),
+          el('span', {className:'expr-hw-ch'}, `[${hw.channel}]`),
+          el('span', {className:'expr-hw-eq'}, ' ← '),
+          el('span', {
+            className:'expr-hw-value',
+            style: hw.type === 'do' 
+              ? `color:${hw.value ? '#2faa60' : '#d84a4a'}` 
+              : `color: ${getValueColor(hw.value)}`
+          }, hw.type === 'do' ? (hw.value ? 'ON' : 'OFF') : formatValue(hw.value))
+        );
+        hwDiv.append(hwRow);
+      }
+      
+      body.append(hwDiv);
+    }
+    
+    // Show output
+    if (showOutput) {
+      const outputDiv = el('div', {className:'expr-output'});
+      outputDiv.append(
+        el('span', {className:'expr-output-label'}, '► Output: '),
+        el('span', {
+          className:'expr-output-value',
+          style: `color: ${getValueColor(exprData.output)};font-weight:700;font-size:16px`
+        }, formatValue(exprData.output))
+      );
+      body.append(outputDiv);
+    }
+    
+    requestAnimationFrame(update);
+  })();
+}
+
 /* ------------------------ tick / read / drag ---------------------------- */
 function onTick(){
   if (replayMode !== null) {
@@ -3698,6 +4552,12 @@ function readSelection(sel){
     case 'math':
       const mathOp = state.math?.[sel.index|0];
       return mathOp ? (mathOp.output ?? 0) : 0;
+    case 'expr':
+      const expr = state.expr?.[sel.index|0];
+      return expr ? (expr.output ?? 0) : 0;
+    case 'button':
+      // For button vars, sel.index is the variable name (string)
+      return state.buttonVars?.[sel.index] ?? 0;
   }
   return 0;
 }
@@ -3760,10 +4620,12 @@ function normalizeLayoutPages(pages){
         w.opts.max    = Number.isFinite(w.opts.max) ? w.opts.max : 10;
         break;
       case 'dobutton':
-        w.opts.title     = w.opts.title ?? 'DO';
+        w.opts.title     = w.opts.title ?? 'Button';
+        w.opts.outputType= w.opts.outputType ?? 'do';
         w.opts.doIndex   = Number.isInteger(w.opts.doIndex) ? w.opts.doIndex : 0;
+        w.opts.varName   = w.opts.varName || 'button1';
         w.opts.activeHigh= (w.opts.activeHigh !== false);
-        w.opts.mode      = w.opts.mode ?? 'momentary'; // 'momentary' | 'toggle' | 'buzz'
+        w.opts.mode      = w.opts.mode ?? 'momentary';
         w.opts.actuationTime = Number.isFinite(w.opts.actuationTime) ? w.opts.actuationTime : 0;
         break;
       case 'aoslider':
@@ -3838,98 +4700,411 @@ function openJsonEditor(title,url){
 /* ==================== EDITORS WITH LOAD FROM FILE ==================== */
 // Replace your openConfigForm, openPidForm, and openScriptEditor functions
 
-async function openConfigForm(){
-  const cfg=await (await fetch('/api/config')).json();
+async function openConfigForm(providedConfig = null, banner = null){
+  let cfg;
+  if (providedConfig) {    cfg = providedConfig;
+  } else {    cfg = await (await fetch('/api/config')).json();
+  }
+  console.log('[CONFIG-DEBUG] Using config:', {
+    boards1608: cfg.boards1608 || cfg.board1608,
+    boardsetc: cfg.boardsetc || cfg.boardetc,
+    analogCount: (cfg.analogs || []).length,
+    doCount: (cfg.digitalOutputs || []).length
+  });
   configCache = cfg;
   const root=el('div',{});
+  
+  // Add banner if provided (from Load button)
+  if (banner) {
+    root.append(banner);
+  }
 
   // Add Load from File button
-  const loadBtn = el('button', {
-    className: 'btn',
-    onclick: () => {
-      const inp = el('input', {type: 'file', accept: '.json'});
-      inp.onchange = async () => {
-        const f = inp.files?.[0];
-        if (!f) return;
-        try {
-          const text = await f.text();
-          const loaded = JSON.parse(text);
-          // Reload the form with loaded data
-          Object.assign(cfg, loaded);
-          root.innerHTML = '';
-          // Rebuild form (simplified - you'd call this recursively)
-          alert('Config loaded! Close and reopen to see changes, or click Save to apply.');
-        } catch(e) {
-          alert('Failed to load config: ' + e.message);
-        }
-      };
-      inp.click();
-    }
-  }, '📁 Load from File');
+  const loadBtn = createLoadButton((loaded, filename) => {    console.log('[CONFIG-DEBUG] Loaded data:', {
+      boards1608: loaded.boards1608 || loaded.board1608,
+      boardsetc: loaded.boardsetc || loaded.boardetc,
+      analogCount: (loaded.analogs || []).length,
+      doCount: (loaded.digitalOutputs || []).length
+    });
+    closeModal();    
+    // Show banner with Apply button
+    const applyBanner = el('div', {
+      style: 'background:#3a5a1a;border:2px solid #4a9eff;border-radius:6px;padding:12px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between'
+    });
+    
+    const msg = el('div', {}, [
+      el('strong', {style: 'color:#4a9eff'}, `📁 Loaded: ${filename}`),
+      el('div', {style: 'font-size:12px;margin-top:4px;color:#ccc'}, 
+        'Config loaded from file. Will be applied when you close this window. You can edit first if needed.')
+    ]);
+    
+    applyBanner.append(msg);
+    
+    openConfigForm(loaded, applyBanner); // Pass banner to show at top
+  });
 
-  const boards=fieldset('Boards', tableForm([
-    ['E-1608 boardNum',     inputNum(cfg.board1608,'boardNum',0)],
-    ['E-1608 sampleRateHz', inputNum(cfg.board1608,'sampleRateHz',1)],
-    ['E-1608 blockSize',    inputNum(cfg.board1608,'blockSize',1)],
-    ['E-TC boardNum',       inputNum(cfg.boardetc,'boardNum',0)],
-    ['E-TC sampleRateHz',   inputNum(cfg.boardetc,'sampleRateHz',1)],
-    ['E-TC blockSize',      inputNum(cfg.boardetc,'blockSize',1)]
+  // Support both single-board (old) and array (new) formats
+  // Determine which format we're using
+  const usingSingleBoards = (cfg.board1608 && !Array.isArray(cfg.board1608));
+  
+  // If using single boards, ensure they exist
+  if (usingSingleBoards) {
+    if (!cfg.board1608) cfg.board1608 = {boardNum: 0, sampleRateHz: 100, blockSize: 128, enabled: true};
+    if (!cfg.boardetc) cfg.boardetc = {boardNum: 1, sampleRateHz: 10, blockSize: 1, enabled: true};
+    // Only set enabled=true if field is completely missing (not if it's false!)
+    // This preserves the user's choice to disable a board
+    if (!('enabled' in cfg.board1608)) cfg.board1608.enabled = true;
+    if (!('enabled' in cfg.boardetc)) cfg.boardetc.enabled = true;
+  } else {
+    // Using array format
+    if (!cfg.boards1608) cfg.boards1608 = [{boardNum: 0, sampleRateHz: 100, blockSize: 128, enabled: true}];
+    if (!cfg.boardsetc) cfg.boardsetc = [{boardNum: 1, sampleRateHz: 10, blockSize: 1, enabled: true}];
+  }
+  
+  const boardsContainer = el('div', {});
+  
+  function renderBoards() {
+    boardsContainer.innerHTML = '';
+    
+    if (usingSingleBoards) {
+      // OLD FORMAT: Single board objects
+      const b1608Card = el('div', {style: 'border:1px solid #2a3046;border-radius:6px;padding:12px;margin:8px 0;background:#1a2030'});
+      b1608Card.append(
+        el('strong', {style: 'display:block;margin-bottom:8px'}, 'E-1608 Board (AI/DO/AO)'),
+        tableForm([
+          ['Enabled',      inputChk(cfg.board1608,'enabled')],
+          ['Board Number', inputNum(cfg.board1608,'boardNum',0)],
+          ['Sample Rate (Hz)', inputNum(cfg.board1608,'sampleRateHz',1)],
+          ['Block Size',   inputNum(cfg.board1608,'blockSize',1)]
+        ])
+      );
+      
+      const btcCard = el('div', {style: 'border:1px solid #2a3046;border-radius:6px;padding:12px;margin:8px 0;background:#1a2030'});
+      btcCard.append(
+        el('strong', {style: 'display:block;margin-bottom:8px'}, 'E-TC Board (Thermocouples)'),
+        tableForm([
+          ['Enabled',      inputChk(cfg.boardetc,'enabled')],
+          ['Board Number', inputNum(cfg.boardetc,'boardNum',0)],
+          ['Sample Rate (Hz)', inputNum(cfg.boardetc,'sampleRateHz',1)],
+          ['Block Size',   inputNum(cfg.boardetc,'blockSize',1)]
+        ])
+      );
+      
+      const enableMultiBtn = el('button', {
+        className: 'btn',
+        style: 'margin-top:12px',
+        onclick: () => {
+          if (confirm('Convert to multiple boards format? This will allow adding more boards. Your current boards will be preserved.')) {
+            // Convert single boards to arrays
+            cfg.boards1608 = [cfg.board1608];
+            cfg.boardsetc = [cfg.boardetc];
+            delete cfg.board1608;
+            delete cfg.boardetc;
+            // Reload the form
+            closeModal();
+            openConfigForm(cfg);
+          }
+        }
+      }, '🔧 Enable Multiple Boards (Advanced)');
+      
+      boardsContainer.append(
+        el('p', {style: 'font-size:12px;color:var(--muted);margin-bottom:12px'}, 
+          'Using single-board format (one E-1608, one E-TC). Click below to enable multiple boards.'),
+        b1608Card,
+        btcCard,
+        enableMultiBtn
+      );
+      return;
+    }
+    
+    // NEW FORMAT: Array of boards
+    // E-1608 Boards
+    const b1608Title = el('h4', {style: 'margin:12px 0 8px 0'}, 'E-1608 Boards (AI/DO/AO)');
+    const b1608Add = el('button', {
+      className: 'btn',
+      onclick: () => {
+        const boardIdx = cfg.boards1608.length;
+        
+        // Create arrays for channels
+        const analogs = [];
+        const digitalOutputs = [];
+        const analogOutputs = [];
+        
+        // Add 8 AI channels
+        for (let i = 0; i < 8; i++) {
+          analogs.push({
+            name: `AI${i}`,
+            slope: 1.0,
+            offset: 0.0,
+            cutoffHz: 0.1,
+            units: 'V',
+            include: true
+          });
+        }
+        
+        // Add 8 DO channels
+        for (let i = 0; i < 8; i++) {
+          digitalOutputs.push({
+            name: `DO${i}`,
+            mode: 'toggle',
+            normallyOpen: true,
+            actuationTime: 0.1,
+            include: true
+          });
+        }
+        
+        // Add 2 AO channels
+        for (let i = 0; i < 2; i++) {
+          analogOutputs.push({
+            name: `AO${i}`,
+            minV: 0.0,
+            maxV: 10.0,
+            startupV: 0.0,
+            enable_gate: false,
+            enable_kind: 'do',
+            enable_index: 0,
+            include: true
+          });
+        }
+        
+        // Add the board with its channels
+        cfg.boards1608.push({
+          boardNum: boardIdx,
+          sampleRateHz: 100,
+          blockSize: 128,
+          enabled: true,
+          analogs: analogs,
+          digitalOutputs: digitalOutputs,
+          analogOutputs: analogOutputs
+        });
+        
+        console.log(`[CONFIG] Added E-1608 board #${boardIdx} with 8 AI, 8 DO, 2 AO`);
+        alert(`Added E-1608 board #${boardIdx}\n+8 AI (AI0-AI7)\n+8 DO (DO0-DO7)\n+2 AO (AO0-AO1)`);
+        
+        renderBoards();
+      }
+    }, '+ Add E-1608');
+    
+    const b1608List = el('div', {});
+    cfg.boards1608.forEach((board, idx) => {
+      const card = el('div', {style: 'border:1px solid #2a3046;border-radius:6px;padding:12px;margin:8px 0;background:#1a2030'});
+      const cardTitle = el('div', {style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'});
+      cardTitle.append(
+        el('strong', {}, `E-1608 #${idx}`),
+        el('button', {
+          className: 'btn danger',
+          style: 'font-size:11px;padding:4px 8px',
+          onclick: () => {
+            if (confirm(`Remove E-1608 board #${board.boardNum}?\n\nThis will remove the board and all its channels!`)) {
+              cfg.boards1608.splice(idx, 1);
+              console.log(`[CONFIG] Removed E-1608 board #${board.boardNum}`);
+              renderBoards();
+            }
+          }
+        }, '✕ Remove')
+      );
+      
+      const fields = tableForm([
+        ['Enabled',      inputChk(board,'enabled')],
+        ['Board Number', inputNum(board,'boardNum',0)],
+        ['Sample Rate (Hz)', inputNum(board,'sampleRateHz',1)],
+        ['Block Size',   inputNum(board,'blockSize',1)]
+      ]);
+      
+      card.append(cardTitle, fields);
+      b1608List.append(card);
+    });
+    
+    // E-TC Boards
+    const btcTitle = el('h4', {style: 'margin:20px 0 8px 0'}, 'E-TC Boards (Thermocouples)');
+    const btcAdd = el('button', {
+      className: 'btn',
+      onclick: () => {
+        const boardIdx = cfg.boardsetc.length;
+        
+        // Create array for TC channels
+        const thermocouples = [];
+        
+        // Add 8 TC channels
+        for (let i = 0; i < 8; i++) {
+          thermocouples.push({
+            name: `TC${i}`,
+            ch: i,
+            type: 'K',
+            offset: 0.0,
+            cutoffHz: 0.1,
+            include: true
+          });
+        }
+        
+        // Add the board with its channels
+        cfg.boardsetc.push({
+          boardNum: boardIdx,
+          sampleRateHz: 10,
+          blockSize: 1,
+          enabled: true,
+          thermocouples: thermocouples
+        });
+        
+        console.log(`[CONFIG] Added E-TC board #${boardIdx} with 8 TC channels`);
+        alert(`Added E-TC board #${boardIdx}\n+8 TC channels (TC0-TC7)`);
+        
+        renderBoards();
+      }
+    }, '+ Add E-TC');
+    
+    const btcList = el('div', {});
+    cfg.boardsetc.forEach((board, idx) => {
+      const card = el('div', {style: 'border:1px solid #2a3046;border-radius:6px;padding:12px;margin:8px 0;background:#1a2030'});
+      const cardTitle = el('div', {style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'});
+      cardTitle.append(
+        el('strong', {}, `E-TC #${idx}`),
+        el('button', {
+          className: 'btn danger',
+          style: 'font-size:11px;padding:4px 8px',
+          onclick: () => {
+            if (confirm(`Remove E-TC board #${board.boardNum}?\n\nThis will remove the board and all its channels!`)) {
+              cfg.boardsetc.splice(idx, 1);
+              console.log(`[CONFIG] Removed E-TC board #${board.boardNum}`);
+              renderBoards();
+            }
+          }
+        }, '✕ Remove')
+      );
+      
+      const fields = tableForm([
+        ['Enabled',      inputChk(board,'enabled')],
+        ['Board Number', inputNum(board,'boardNum',0)],
+        ['Sample Rate (Hz)', inputNum(board,'sampleRateHz',1)],
+        ['Block Size',   inputNum(board,'blockSize',1)]
+      ]);
+      
+      card.append(cardTitle, fields);
+      btcList.append(card);
+    });
+    
+    boardsContainer.append(
+      b1608Title,
+      el('div', {style: 'margin-bottom:8px'}, b1608Add),
+      b1608List,
+      btcTitle,
+      el('div', {style: 'margin-bottom:8px'}, btcAdd),
+      btcList
+    );
+  }
+  
+  renderBoards();
+  
+  const boards=fieldset('Hardware Boards', el('div', {}, [
+    el('p', {style: 'font-size:12px;color:var(--muted);margin-bottom:12px'}, 
+      'Add multiple E-1608 and E-TC boards as needed. Each board requires a unique board number.'),
+    boardsContainer
   ]));
 
-  const analogRows=(cfg.analogs||[]).map((a,i)=>[
-    `AI${i} name`, inputText(a,'name'),
-    `slope`,      inputNum(a,'slope',0.000001),
-    `offset`,     inputNum(a,'offset',0.000001),
-    `cutoffHz`,   inputNum(a,'cutoffHz',0.1),
-    `units`,      inputText(a,'units'),
-    `include`,    inputChk(a,'include')
-  ]);
-  const analogs=fieldset('Analogs (server scales Y = m·X + b)', tableFormRows(analogRows));
+  // Build analog sections per board
+  const analogSections = [];
+  if (cfg.boards1608) {
+    cfg.boards1608.forEach((board, boardIdx) => {
+      const analogRows = (board.analogs||[]).map((a,i)=>[
+        `AI${i}`, inputText(a,'name'),
+        `slope`,      inputNum(a,'slope',0.000001),
+        `offset`,     inputNum(a,'offset',0.000001),
+        `cutoffHz`,   inputNum(a,'cutoffHz',0.1),
+        `units`,      inputText(a,'units'),
+        `include`,    inputChk(a,'include')
+      ]);
+      if (analogRows.length > 0) {
+        analogSections.push(fieldset(`Analogs - Board #${board.boardNum} (Y = m·X + b)`, tableFormRows(analogRows)));
+      }
+    });
+  }
+  const analogs = analogSections.length > 0 ? el('div', {}, analogSections) : el('div', {}, 'No analog channels configured');
 
-  (cfg.digitalOutputs||[]).forEach(d=>{ if(!d.mode){ d.mode = d.momentary ? 'momentary' : 'toggle'; } });
   const DO_MODES=['toggle','momentary','buzz'];
-  const doRows=(cfg.digitalOutputs||[]).map((d,i)=>[
-    `DO${i} name`, inputText(d,'name'),
-    `mode`,        selectEnum(DO_MODES,d.mode||'toggle',v=>{ d.mode=v; d.momentary = (v==='momentary'); }),
-    `normallyOpen`,inputChk(d,'normallyOpen'),
-    `actuationTime (s, toggle only)`, inputNum(d,'actuationTime',0.1),
-    `include`,     inputChk(d,'include')
-  ]);
-  const dig=fieldset('Digital Outputs', tableFormRows(doRows));
+  const doSections = [];
+  if (cfg.boards1608) {
+    cfg.boards1608.forEach((board, boardIdx) => {
+      (board.digitalOutputs||[]).forEach(d=>{ if(!d.mode){ d.mode = d.momentary ? 'momentary' : 'toggle'; } });
+      const doRows = (board.digitalOutputs||[]).map((d,i)=>[
+        `DO${i}`, inputText(d,'name'),
+        `mode`,        selectEnum(DO_MODES,d.mode||'toggle',v=>{ d.mode=v; d.momentary = (v==='momentary'); }),
+        `normallyOpen`,inputChk(d,'normallyOpen'),
+        `actuationTime (s)`, inputNum(d,'actuationTime',0.1),
+        `include`,     inputChk(d,'include')
+      ]);
+      if (doRows.length > 0) {
+        doSections.push(fieldset(`Digital Outputs - Board #${board.boardNum}`, tableFormRows(doRows)));
+      }
+    });
+  }
+  const dig = doSections.length > 0 ? el('div', {}, doSections) : el('div', {}, 'No digital outputs');
 
-  const aoRows=(cfg.analogOutputs||[]).map((a,i)=>[
-    `AO${i} name`, inputText(a,'name'),
-    `minV`,        inputNum(a,'minV',0.001),
-    `maxV`,        inputNum(a,'maxV',0.001),
-    `startupV`,    inputNum(a,'startupV',0.001),
-    `enable gate`, inputChk(a,'enable_gate'),
-    `gate type`,   selectEnum(['do','le'], a.enable_kind||'do', v=>a.enable_kind=v),
-    `gate index`,  inputNum(a,'enable_index',1),
-    `include`,     inputChk(a,'include')
-  ]);
-  const aos=fieldset('Analog Outputs (0–10 V)', tableFormRows(aoRows));
+  const aoSections = [];
+  if (cfg.boards1608) {
+    cfg.boards1608.forEach((board, boardIdx) => {
+      const aoRows = (board.analogOutputs||[]).map((a,i)=>[
+        `AO${i}`, inputText(a,'name'),
+        `minV`,        inputNum(a,'minV',0.001),
+        `maxV`,        inputNum(a,'maxV',0.001),
+        `startupV`,    inputNum(a,'startupV',0.001),
+        `enable gate`, inputChk(a,'enable_gate'),
+        `gate type`,   selectEnum(['do','le','math','expr'], a.enable_kind||'do', v=>a.enable_kind=v),
+        `gate index`,  inputNum(a,'enable_index',1),
+        `include`,     inputChk(a,'include')
+      ]);
+      if (aoRows.length > 0) {
+        aoSections.push(fieldset(`Analog Outputs (0-10V) - Board #${board.boardNum}`, tableFormRows(aoRows)));
+      }
+    });
+  }
+  const aos = aoSections.length > 0 ? el('div', {}, aoSections) : el('div', {}, 'No analog outputs');
 
-  const tcRows=(cfg.thermocouples||[]).map((t,i)=>[
-    `TC${i} include`, inputChk(t,'include'),
-    `ch`,             inputNum(t,'ch',1),
-    `name`,           inputText(t,'name'),
-    `type`,           selectEnum(['K','J','T','E','R','S','B','N','C'], t.type||'K', v=>t.type=v),
-    `offset`,         inputNum(t,'offset',0.001),
-    `cutoffHz`,       inputNum(t,'cutoffHz',0.1)
-  ]);
-  const tcs=fieldset('Thermocouples', tableFormRows(tcRows));
+  const tcSections = [];
+  if (cfg.boardsetc) {
+    cfg.boardsetc.forEach((board, boardIdx) => {
+      const tcRows = (board.thermocouples||[]).map((t,i)=>[
+        `TC${i}`, inputText(t,'name'),
+        `include`, inputChk(t,'include'),
+        `ch`,             inputNum(t,'ch',1),
+        `type`,           selectEnum(['K','J','T','E','R','S','B','N','C'], t.type||'K', v=>t.type=v),
+        `offset`,         inputNum(t,'offset',0.001),
+        `cutoffHz`,       inputNum(t,'cutoffHz',0.1)
+      ]);
+      if (tcRows.length > 0) {
+        tcSections.push(fieldset(`Thermocouples - Board #${board.boardNum}`, tableFormRows(tcRows)));
+      }
+    });
+  }
+  const tcs = tcSections.length > 0 ? el('div', {}, tcSections) : el('div', {}, 'No thermocouples');
 
   const save=el('button',{className:'btn',onclick:async()=>{
     try{ await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)}); alert('Saved'); }
     catch(e){ alert('Save failed: '+e.message); }
   }},'Save');
+  
+  const saveAs = createSaveAsButton(() => cfg, 'config.json');
 
   root.append(
     el('div', {style: 'display:flex;gap:8px;margin-bottom:12px'}, [loadBtn]),
     boards,analogs,dig,aos,tcs,
-    el('div',{style:'margin-top:8px'}, save)
+    el('div',{style:'display:flex;gap:8px;margin-top:8px'}, [save, saveAs])
   );
-  showModal(root, ()=>{ renderPage(); });
+  
+  // If config was loaded from file (has banner), auto-apply on close
+  const onClose = async () => {
+    if (banner && providedConfig) {      try {
+        await fetch('/api/config', {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(providedConfig)
+        });      } catch(e) {
+        console.error('[CONFIG-DEBUG] Failed to apply loaded config:', e);
+      }
+    }
+    renderPage();
+  };
+  
+  showModal(root, onClose);
 }
 
 async function openPidForm(){
@@ -3947,25 +5122,11 @@ async function openPidForm(){
   const title = el('h2', {}, 'PID Loops');
 
   // Add Load from File button
-  const loadBtn = el('button', {
-    className: 'btn',
-    onclick: () => {
-      const inp = el('input', {type: 'file', accept: '.json'});
-      inp.onchange = async () => {
-        const f = inp.files?.[0];
-        if (!f) return;
-        try {
-          const text = await f.text();
-          const loaded = JSON.parse(text);
-          Object.assign(pid, loaded);
-          alert('PID config loaded! Close and reopen to see changes, or click Save to apply.');
-        } catch(e) {
-          alert('Failed to load PID: ' + e.message);
-        }
-      };
-      inp.click();
-    }
-  }, '📁 Load from File');
+  const loadBtn = createLoadButton((loaded, filename) => {
+    Object.assign(pid, loaded);
+    closeModal();
+    openPidForm(); // Re-open with loaded data
+  });
 
   // Add Loop button
   const addBtn = el('button', {
@@ -4057,23 +5218,23 @@ async function openPidForm(){
       // Create signal selectors
       const aiChSel = await createSignalSelector(L.src || 'ai', L.ai_ch || 0, v => L.ai_ch = v);
       const outChSel = await createSignalSelector(L.kind === 'analog' ? 'ao' : 'do', L.out_ch || 0, v => L.out_ch = v);
-      const spChSel = (L.sp_source === 'ao' || L.sp_source === 'math' || L.sp_source === 'pid')
+      const spChSel = (L.sp_source === 'ao' || L.sp_source === 'math' || L.sp_source === 'pid' || L.sp_source === 'expr' || L.sp_source === 'static')
         ? await createSignalSelector(L.sp_source, L.sp_channel || 0, v => L.sp_channel = v)
         : num(L, 'sp_channel', 1);
       
       // Out Min cell: show source selector + value/channel
       const outMinCell = el('td', {style: 'min-width:150px'});
-      const outMinSrcSel = selectEnum(['fixed','math'], L.out_min_source||'fixed', v => {L.out_min_source=v; buildForm();});
-      const outMinContent = (L.out_min_source === 'math')
-        ? await createSignalSelector('math', L.out_min_channel || 0, v => L.out_min_channel = v)
+      const outMinSrcSel = selectEnum(['fixed','math','expr'], L.out_min_source||'fixed', v => {L.out_min_source=v; buildForm();});
+      const outMinContent = (L.out_min_source === 'math' || L.out_min_source === 'expr')
+        ? await createSignalSelector(L.out_min_source, L.out_min_channel || 0, v => L.out_min_channel = v)
         : num(L, 'out_min', 0.0001);
       outMinCell.append(outMinSrcSel, el('br'), outMinContent);
       
       // Out Max cell: show source selector + value/channel
       const outMaxCell = el('td', {style: 'min-width:150px'});
-      const outMaxSrcSel = selectEnum(['fixed','math'], L.out_max_source||'fixed', v => {L.out_max_source=v; buildForm();});
-      const outMaxContent = (L.out_max_source === 'math')
-        ? await createSignalSelector('math', L.out_max_channel || 0, v => L.out_max_channel = v)
+      const outMaxSrcSel = selectEnum(['fixed','math','expr'], L.out_max_source||'fixed', v => {L.out_max_source=v; buildForm();});
+      const outMaxContent = (L.out_max_source === 'math' || L.out_max_source === 'expr')
+        ? await createSignalSelector(L.out_max_source, L.out_max_channel || 0, v => L.out_max_channel = v)
         : num(L, 'out_max', 0.0001);
       outMaxCell.append(outMaxSrcSel, el('br'), outMaxContent);
       
@@ -4084,11 +5245,11 @@ async function openPidForm(){
         el('td', {}, chk(L, 'enabled')),
         el('td', {}, txt(L, 'name')),
         el('td', {}, selectEnum(['analog','digital','var'], L.kind||'analog', v=>{L.kind=v; buildForm();})),  // Rebuild when kind changes
-        el('td', {}, selectEnum(['ai','ao','tc','pid','math'], L.src||'ai', v=>{L.src=v; buildForm();})),  // Rebuild on src change
+        el('td', {}, selectEnum(['ai','ao','tc','pid','math','expr','static'], L.src||'ai', v=>{L.src=v; buildForm();})),  // Rebuild on src change
         el('td', {}, aiChSel),
         el('td', {}, outChSel),  // Use selector instead of num
         el('td', {}, num(L, 'target', 0.0001)),  // Fixed SP value
-        el('td', {}, selectEnum(['fixed','ao','pid','math'], L.sp_source||'fixed', v=>{L.sp_source=v; buildForm();})),  // Rebuild on sp_source change
+        el('td', {}, selectEnum(['fixed','ao','pid','math','expr','static'], L.sp_source||'fixed', v=>{L.sp_source=v; buildForm();})),  // Rebuild on sp_source change
         el('td', {}, spChSel),
         el('td', {}, num(L, 'kp', 0.0001)),
         el('td', {}, num(L, 'ki', 0.0001)),
@@ -4101,7 +5262,7 @@ async function openPidForm(){
         el('td', {}, num(L, 'i_max', 0.0001)),
         el('td', {}, num(L, 'execution_rate_hz', 1)),
         el('td', {}, chk(L, 'enable_gate')),
-        el('td', {}, selectEnum(['do','le'], L.enable_kind||'do', v=>{L.enable_kind=v; buildForm();})),  // Rebuild on gate kind change
+        el('td', {}, selectEnum(['do','le','math','expr'], L.enable_kind||'do', v=>{L.enable_kind=v; buildForm();})),  // Rebuild on gate kind change
         el('td', {}, gateChSel),
         el('td', {}, removeBtn)
       ]);
@@ -4123,11 +5284,13 @@ async function openPidForm(){
     catch(e){ alert('Save failed: '+e.message); }
   }},'Save');
 
+  const saveAs = createSaveAsButton(() => ({loops}), 'PID.json');
+  
   root.append(
     title,
     el('div', {style: 'display:flex;gap:8px;margin-bottom:12px'}, [loadBtn, addBtn]),
     el('div', {style: 'overflow:auto;max-height:60vh'}, formContainer),
-    el('div',{style:'margin-top:8px'}, save)
+    el('div',{style:'display:flex;gap:8px;margin-top:8px'}, [save, saveAs])
   );
   showModal(root, ()=>{ renderPage(); });
 }
@@ -4150,25 +5313,11 @@ async function openMotorEditor(){
   const title = el('h2', {}, 'Motor Controllers');
   
   // Load from file button
-  const loadBtn = el('button', {
-    className: 'btn',
-    onclick: () => {
-      const inp = el('input', {type: 'file', accept: '.json'});
-      inp.onchange = async () => {
-        const f = inp.files?.[0];
-        if (!f) return;
-        try {
-          const text = await f.text();
-          const loaded = JSON.parse(text);
-          Object.assign(motor_data, loaded);
-          alert('Motor config loaded! Close and reopen to see changes, or click Save to apply.');
-        } catch(e) {
-          alert('Failed to load motor config: ' + e.message);
-        }
-      };
-      inp.click();
-    }
-  }, '📁 Load from File');
+  const loadBtn = createLoadButton((loaded, filename) => {
+    Object.assign(motor_data, loaded);
+    closeModal();
+    openMotorEditor(); // Re-open with loaded data
+  });
 
   // Add Motor button
   const addBtn = el('button', {
@@ -4296,6 +5445,8 @@ async function openMotorEditor(){
     }
   }, 'Save');
 
+  const saveAs = createSaveAsButton(() => ({motors}), 'motor.json');
+  
   root.append(
     title,
     el('div', {style: 'display:flex;gap:8px;margin-bottom:12px'}, [loadBtn, addBtn]),
@@ -4305,7 +5456,7 @@ async function openMotorEditor(){
         'RPM Command = Input * Scale + Offset. Negative RPM reverses motor.')
     ]),
     el('div', {style: 'overflow:auto;max-height:60vh'}, formContainer),
-    el('div', {style:'margin-top:8px'}, save)
+    el('div', {style:'display:flex;gap:8px;margin-top:8px'}, [save, saveAs])
   );
   showModal(root, ()=>{ renderPage(); });
 }
@@ -4318,25 +5469,11 @@ async function openLEEditor(){
   const root = el('div', {});
   const title = el('h2', {}, 'Logic Elements Editor');
   
-  const loadBtn = el('button', {
-    className: 'btn',
-    onclick: () => {
-      const inp = el('input', {type: 'file', accept: '.json'});
-      inp.onchange = async () => {
-        const f = inp.files?.[0];
-        if (!f) return;
-        try {
-          const text = await f.text();
-          const loaded = JSON.parse(text);
-          Object.assign(le_data, loaded);
-          alert('LE config loaded! Close and reopen to see changes, or click Save to apply.');
-        } catch(e) {
-          alert('Failed to load LE config: ' + e.message);
-        }
-      };
-      inp.click();
-    }
-  }, '📁 Load from File');
+  const loadBtn = createLoadButton((loaded, filename) => {
+    Object.assign(le_data, loaded);
+    closeModal();
+    openLEEditor(); // Re-open with loaded data
+  });
 
   const addBtn = el('button', {
     className: 'btn',
@@ -4423,7 +5560,7 @@ async function openLEEditor(){
         signalSelect.replaceWith(newSel);
         signalSelect = newSel;
         // Clear comparison fields when switching to non-analog types
-        if (!['ai', 'ao', 'tc', 'pid_u', 'math'].includes(e.target.value)) {
+        if (!['ai', 'ao', 'tc', 'pid_u', 'math', 'expr'].includes(e.target.value)) {
           delete input.comparison;
           delete input.compare_to_type;
           delete input.compare_value;
@@ -4440,7 +5577,7 @@ async function openLEEditor(){
     });
     
     // Add options - compact version
-    ['do', 'ai', 'ao', 'tc', 'pid_u', 'le', 'math'].forEach(k => {
+    ['do', 'ai', 'ao', 'tc', 'pid_u', 'le', 'math', 'expr'].forEach(k => {
       const opt = el('option', {value: k}, k.toUpperCase());
       kindSelect.append(opt);
     });
@@ -4464,7 +5601,7 @@ async function openLEEditor(){
     div.append(kindRow);
 
     // For analog types, show comparison options - compact layout
-    if (['ai', 'ao', 'tc', 'pid_u'].includes(input.kind)) {
+    if (['ai', 'ao', 'tc', 'pid_u', 'math', 'expr'].includes(input.kind)) {
       const compRow = el('div', {className: 'row', style: 'margin-bottom:8px'});
       
       const compSelect = el('select', {
@@ -4525,7 +5662,7 @@ async function openLEEditor(){
             compareSignalSelect = newSel;
           }
         });
-        ['ai', 'ao', 'tc', 'pid_u', 'math'].forEach(k => {
+        ['ai', 'ao', 'tc', 'pid_u', 'math', 'expr'].forEach(k => {
           signalKindSelect.append(el('option', {value: k}, k.toUpperCase()));
         });
         signalKindSelect.value = input.compare_to_kind || 'ai';
@@ -4576,7 +5713,7 @@ async function openLEEditor(){
         'Digital inputs (DO, LE) are boolean. Analog inputs (AI, AO, TC, PID) are compared to a value or another signal.')
     ]),
     container,
-    el('div', {style:'margin-top:12px'}, save)
+    el('div', {style:'display:flex;gap:8px;margin-top:12px'}, [save, createSaveAsButton(() => ({elements}), 'logic_elements.json')])
   );
   
   renderLEEditor();
@@ -4590,25 +5727,11 @@ async function openMathEditor(){
   const root = el('div', {});
   const title = el('h2', {}, 'Math Operators Editor');
   
-  const loadBtn = el('button', {
-    className: 'btn',
-    onclick: () => {
-      const inp = el('input', {type: 'file', accept: '.json'});
-      inp.onchange = async () => {
-        const f = inp.files?.[0];
-        if (!f) return;
-        try {
-          const text = await f.text();
-          const loaded = JSON.parse(text);
-          Object.assign(math_data, loaded);
-          alert('Math config loaded! Close and reopen to see changes, or click Save to apply.');
-        } catch(e) {
-          alert('Failed to load Math config: ' + e.message);
-        }
-      };
-      inp.click();
-    }
-  }, '📁 Load from File');
+  const loadBtn = createLoadButton((loaded, filename) => {
+    Object.assign(math_data, loaded);
+    closeModal();
+    openMathEditor(); // Re-open with loaded data
+  });
 
   const addUnaryBtn = el('button', {
     className: 'btn',
@@ -4862,7 +5985,7 @@ async function openMathEditor(){
       },
       style: 'flex:1'
     });
-    ['ai', 'ao', 'tc', 'pid_u', 'math', 'le', 'value'].forEach(k => {
+    ['ai', 'ao', 'tc', 'pid_u', 'math', 'le', 'expr', 'value'].forEach(k => {
       kindSelect.append(el('option', {value: k}, k.toUpperCase()));
     });
     kindSelect.value = input.kind || 'ai';
@@ -4921,20 +6044,13 @@ async function openMathEditor(){
     }
   }, '💾 Save');
 
-  const downloadBtn = el('button', {
-    className: 'btn',
-    onclick: () => {
-      const blob = new Blob([JSON.stringify(math_data, null, 2)], {type: 'application/json'});
-      const a = el('a', {href: URL.createObjectURL(blob), download: 'math_operators.json'});
-      a.click();
-    }
-  }, '⬇ Download JSON');
+  const saveAs = createSaveAsButton(() => math_data, 'math_operators.json');
 
   root.append(
     title,
     el('div', {className: 'row', style: 'gap:8px;margin:12px 0'}, [loadBtn, addUnaryBtn, addBinaryBtn]),
     container,
-    el('div', {className: 'row', style: 'gap:8px;margin-top:20px'}, [saveBtn, downloadBtn])
+    el('div', {className: 'row', style: 'gap:8px;margin-top:20px'}, [saveBtn, saveAs])
   );
 
   showModal(root);
@@ -4942,7 +6058,7 @@ async function openMathEditor(){
 
 async function openZeroAIDialog() {
   const cfg = await (await fetch('/api/config')).json();
-  const analogs = cfg.analogs || [];
+  const analogs = getAllAnalogs(cfg);
   
   const root = el('div', {});
   const title = el('h2', {}, 'Zero AI Channels');
@@ -5098,214 +6214,6 @@ async function openZeroAIDialog() {
   showModal(root);
 }
 
-async function openScriptEditor() {
-  async function openMathEditor() {
-    const math_data = await (await fetch('/api/math_operators')).json();
-    const operators = math_data.operators || [];
-
-    const root = el('div', {});
-    const title = el('h2', {}, 'Math Operators Editor');
-
-    const loadBtn = el('button', {
-      className: 'btn',
-      onclick: () => {
-        const inp = el('input', {type: 'file', accept: '.json'});
-        inp.onchange = async () => {
-          const f = inp.files?.[0];
-          if (!f) return;
-          try {
-            const text = await f.text();
-            const loaded = JSON.parse(text);
-            Object.assign(math_data, loaded);
-            alert('Math config loaded! Close and reopen to see changes, or click Save to apply.');
-          } catch (e) {
-            alert('Failed to load Math config: ' + e.message);
-          }
-        };
-        inp.click();
-      }
-    }, '📁 Load from File');
-
-    const addUnaryBtn = el('button', {
-      className: 'btn',
-      onclick: () => {
-        operators.push({
-          enabled: true,
-          name: `Math${operators.length}`,
-          operation: 'sqr',
-          input_a: {kind: 'ai', index: 0}
-        });
-        renderMathEditor();
-      }
-    }, '+ Add Unary (sqr, sqrt, etc)');
-
-    const addBinaryBtn = el('button', {
-      className: 'btn',
-      onclick: () => {
-        operators.push({
-          enabled: true,
-          name: `Math${operators.length}`,
-          operation: 'add',
-          input_a: {kind: 'ai', index: 0},
-          input_b: {kind: 'ai', index: 1}
-        });
-        renderMathEditor();
-      }
-    }, '+ Add Binary (+, -, ×, ÷)');
-
-    const container = el('div', {style: 'overflow:auto;max-height:60vh'});
-
-    function renderMathEditor() {
-      container.innerHTML = '';
-
-      operators.forEach((op, idx) => {
-        const card = el('fieldset', {style: 'margin-bottom:20px; padding:12px;'});
-        const legend = el('legend', {}, `Math${idx}: ${op.name}`);
-        card.append(legend);
-
-        const topRow = el('div', {className: 'row', style: 'margin-bottom:12px'});
-        topRow.append(
-            el('label', {}, [
-              el('input', {type: 'checkbox', checked: op.enabled, onchange: e => op.enabled = e.target.checked}),
-              ' Enabled'
-            ]),
-            el('label', {style: 'flex:2'}, [
-              'Name: ',
-              el('input', {type: 'text', value: op.name, oninput: e => op.name = e.target.value, style: 'width:100%'})
-            ]),
-            el('button', {
-              className: 'btn danger',
-              onclick: () => {
-                if (confirm(`Delete Math${idx}?`)) {
-                  operators.splice(idx, 1);
-                  renderMathEditor();
-                }
-              }
-            }, '🗑 Delete')
-        );
-        card.append(topRow);
-
-        // Operation select
-        const opRow = el('div', {style: 'margin:12px 0'});
-        const opSelect = el('select', {
-          onchange: e => {
-            op.operation = e.target.value;
-            // Binary ops need input_b, unary don't
-            const binary = ['add', 'sub', 'mul', 'div', 'mod', 'pow', 'min', 'max', 'atan2'];
-            if (binary.includes(e.target.value)) {
-              if (!op.input_b) op.input_b = {kind: 'ai', index: 1};
-            } else {
-              delete op.input_b;
-            }
-            renderMathEditor();
-          },
-          style: 'font-size:14px; padding:6px 12px'
-        });
-
-        const opGroups = {
-          'Unary': ['sqr', 'sqrt', 'log10', 'ln', 'exp', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'abs', 'neg'],
-          'Binary': ['add', 'sub', 'mul', 'div', 'mod', 'pow', 'min', 'max', 'atan2']
-        };
-        Object.entries(opGroups).forEach(([group, ops]) => {
-          const optgroup = el('optgroup', {label: group});
-          ops.forEach(o => optgroup.append(el('option', {value: o}, o)));
-          opSelect.append(optgroup);
-        });
-        opSelect.value = op.operation || 'add';
-        opRow.append(el('label', {}, ['Operation: ', opSelect]));
-        card.append(opRow);
-
-        // Input A
-        const inputASection = el('div', {style: 'border:1px solid #2a3046; padding:8px; margin-bottom:8px; border-radius:6px'});
-        inputASection.append(el('h4', {style: 'margin:0 0 8px 0; color:#a8b3cf'}, 'Input A'));
-        inputASection.append(createMathInputEditor(op.input_a));
-        card.append(inputASection);
-
-        // Input B (only for binary ops)
-        const binary = ['add', 'sub', 'mul', 'div', 'mod', 'pow', 'min', 'max', 'atan2'];
-        if (binary.includes(op.operation)) {
-          const inputBSection = el('div', {style: 'border:1px solid #2a3046; padding:8px; border-radius:6px'});
-          inputBSection.append(el('h4', {style: 'margin:0 0 8px 0; color:#a8b3cf'}, 'Input B'));
-          inputBSection.append(createMathInputEditor(op.input_b));
-          card.append(inputBSection);
-        }
-
-        container.append(card);
-      });
-    }
-
-    function createMathInputEditor(input) {
-      const div = el('div', {className: 'row'});
-
-      const kindSelect = el('select', {
-        onchange: e => input.kind = e.target.value,
-        style: 'flex:1'
-      });
-      ['ai', 'ao', 'tc', 'pid_u', 'math'].forEach(k => {
-        kindSelect.append(el('option', {value: k}, k.toUpperCase()));
-      });
-      kindSelect.value = input.kind || 'ai';
-
-      const indexInput = el('input', {
-        type: 'number',
-        min: 0,
-        step: 1,
-        value: input.index || 0,
-        oninput: e => input.index = parseInt(e.target.value) || 0,
-        style: 'flex:1'
-      });
-
-      div.append(
-          el('label', {style: 'flex:1'}, ['Kind: ', kindSelect]),
-          el('label', {style: 'flex:1'}, ['Index: ', indexInput])
-      );
-
-      return div;
-    }
-
-    renderMathEditor();
-
-    const saveBtn = el('button', {
-      className: 'btn',
-      onclick: async () => {
-        try {
-          const resp = await fetch('/api/math_operators', {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(math_data)
-          });
-          const result = await resp.json();
-          if (result.ok) {
-            alert('Math operators saved!');
-            closeModal();
-          } else {
-            alert('Failed to save: ' + result.error);
-          }
-        } catch (e) {
-          alert('Network error: ' + e.message);
-        }
-      }
-    }, '💾 Save');
-
-    const downloadBtn = el('button', {
-      className: 'btn',
-      onclick: () => {
-        const blob = new Blob([JSON.stringify(math_data, null, 2)], {type: 'application/json'});
-        const a = el('a', {href: URL.createObjectURL(blob), download: 'math_operators.json'});
-        a.click();
-      }
-    }, '⬇ Download JSON');
-
-    root.append(
-        title,
-        el('div', {className: 'row', style: 'gap:8px;margin:12px 0'}, [loadBtn, addUnaryBtn, addBinaryBtn]),
-        container,
-        el('div', {className: 'row', style: 'gap:8px;margin-top:20px'}, [saveBtn, downloadBtn])
-    );
-
-    showModal(root);
-  }
-
   async function openScriptEditor() {
     const script = await (await fetch('/api/script')).json();
     const events = script.events || [];
@@ -5337,13 +6245,29 @@ async function openScriptEditor() {
         inp.click();
       }
     }, '📁 Load from File');
+    
+    // Save As button - download script as JSON file
+    const saveAsBtn = el('button', {
+      className: 'btn',
+      onclick: () => {
+        const scriptData = {events: events};
+        const blob = new Blob([JSON.stringify(scriptData, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = el('a', {
+          href: url,
+          download: `script_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`
+        });
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    }, '💾 Save As...');
 
     const table = el('table', {className: 'form script-table'});
     const thead = el('thead', {}, el('tr', {}, [
       el('th', {}, 'Time (s)'),
       el('th', {}, 'Duration (s)'),
       el('th', {}, 'Type'),
-      el('th', {}, 'Channel'),
+      el('th', {}, 'Channel/Name'),
       el('th', {}, 'Value/State'),
       el('th', {}, 'NO/NC'),
       el('th', {}, 'Actions')
@@ -5371,9 +6295,11 @@ async function openScriptEditor() {
         });
         durationInput.oninput = () => evt.duration = parseFloat(durationInput.value) || 0;
 
-        const typeSelect = el('select', {style: 'width:80px'}, [
+        const typeSelect = el('select', {style: 'width:100px'}, [
           el('option', {value: 'DO'}, 'DO'),
-          el('option', {value: 'AO'}, 'AO')
+          el('option', {value: 'AO'}, 'AO'),
+          el('option', {value: 'buttonVar'}, 'ButtonVar'),
+          el('option', {value: 'var'}, 'Var')
         ]);
         typeSelect.value = evt.type || 'DO';
         typeSelect.onchange = () => {
@@ -5381,20 +6307,69 @@ async function openScriptEditor() {
           renderEvents();
         };
 
-        const channelInput = el('input', {
-          type: 'number',
-          value: evt.channel || 0,
-          min: 0,
-          max: (evt.type === 'AO' ? 1 : 7),
-          step: 1,
-          style: 'width:60px'
-        });
-        channelInput.oninput = () => evt.channel = parseInt(channelInput.value) || 0;
+        // Create channel selector based on type
+        let channelControl;
+        
+        if (evt.type === 'DO' || !evt.type) {
+          // DO: dropdown with names
+          const doSelect = el('select', {style: 'width:120px'});
+          const allDOs = getAllDigitalOutputs(configCache);
+          allDOs.forEach((doChannel, idx) => {
+            doSelect.append(el('option', {value: idx}, `DO${idx}: ${doChannel.name || 'Unnamed'}`));
+          });
+          doSelect.value = evt.channel || 0;
+          doSelect.onchange = () => evt.channel = parseInt(doSelect.value);
+          channelControl = doSelect;
+          
+        } else if (evt.type === 'AO') {
+          // AO: dropdown with names
+          const aoSelect = el('select', {style: 'width:120px'});
+          const allAOs = getAllAnalogOutputs(configCache);
+          allAOs.forEach((aoChannel, idx) => {
+            aoSelect.append(el('option', {value: idx}, `AO${idx}: ${aoChannel.name || 'Unnamed'}`));
+          });
+          aoSelect.value = evt.channel || 0;
+          aoSelect.onchange = () => evt.channel = parseInt(aoSelect.value);
+          channelControl = aoSelect;
+          
+        } else {
+          // Fallback for unknown types
+          const channelInput = el('input', {
+            type: 'number',
+            value: evt.channel || 0,
+            min: 0,
+            step: 1,
+            style: 'width:60px'
+          });
+          channelInput.oninput = () => evt.channel = parseInt(channelInput.value) || 0;
+          channelControl = channelInput;
+        }
 
         let valueControl;
         let noNcControl = el('span', {}, '—');
 
-        if (evt.type === 'DO' || !evt.type) {
+        if (evt.type === 'buttonVar' || evt.type === 'var') {
+          // For buttonVar/var: show varName input and numeric value
+          const varNameInput = el('input', {
+            type: 'text',
+            value: evt.varName || (evt.type === 'buttonVar' ? 'button1' : 'var1'),
+            placeholder: 'name',
+            style: 'width:80px'
+          });
+          varNameInput.oninput = () => evt.varName = varNameInput.value;
+          channelControl = varNameInput;
+          
+          const valueInput = el('input', {
+            type: 'number',
+            value: evt.value || 0,
+            step: 'any',
+            style: 'width:80px'
+          });
+          valueInput.oninput = () => evt.value = parseFloat(valueInput.value) || 0;
+          valueControl = valueInput;
+          noNcControl = el('span', {}, '—');
+          
+        } else if (evt.type === 'DO' || !evt.type) {
           const stateCheck = el('input', {
             type: 'checkbox',
             checked: !!evt.state
@@ -5477,7 +6452,7 @@ async function openScriptEditor() {
           el('td', {}, timeInput),
           el('td', {}, durationInput),
           el('td', {}, typeSelect),
-          el('td', {}, channelInput),
+          el('td', {}, channelControl),
           el('td', {}, valueControl),
           el('td', {}, noNcControl),
           el('td', {style: 'display:flex;gap:4px'}, [upBtn, downBtn, deleteBtn])
@@ -5493,8 +6468,15 @@ async function openScriptEditor() {
     const addBtn = el('button', {
       className: 'btn',
       onclick: () => {
+        // Auto-populate time = last event's time + duration
+        let newTime = 0;
+        if (events.length > 0) {
+          const lastEvt = events[events.length - 1];
+          newTime = (lastEvt.time || 0) + (lastEvt.duration || 0);
+        }
+        
         events.push({
-          time: 0,
+          time: newTime,
           duration: 0,
           type: 'DO',
           channel: 0,
@@ -5534,7 +6516,7 @@ async function openScriptEditor() {
 
     root.append(
         title,
-        el('div', {style: 'display:flex;gap:8px;margin:12px 0'}, [loadBtn]),
+        el('div', {style: 'display:flex;gap:8px;margin:12px 0'}, [loadBtn, saveAsBtn]),
         el('div', {style: 'margin:12px 0'}, [
           el('p', {}, 'Define timed events for automated control. Time is in seconds from script start.'),
           el('p', {style: 'font-size:12px;color:var(--muted)'},
@@ -5547,7 +6529,780 @@ async function openScriptEditor() {
     showModal(root);
   }
 
+/* ======================== EXPRESSION HELP ======================== */
+function openExpressionHelp() {
+  const root = el('div', {style: 'max-width:900px; max-height:80vh; overflow:auto;'});
+  
+  // Fetch help content from server
+  fetch('/EXPRESSION_REFERENCE.md')
+    .then(r => r.text())
+    .then(markdown => {
+      // Simple markdown rendering
+      const lines = markdown.split('\n');
+      let html = '';
+      let inCodeBlock = false;
+      let codeBlockContent = '';
+      
+      for (let line of lines) {
+        // Code blocks
+        if (line.startsWith('```')) {
+          if (inCodeBlock) {
+            html += `<pre style="background:#1a1d2e;padding:10px;border-radius:4px;overflow:auto;font-size:12px;"><code>${codeBlockContent}</code></pre>`;
+            codeBlockContent = '';
+          }
+          inCodeBlock = !inCodeBlock;
+          continue;
+        }
+        
+        if (inCodeBlock) {
+          codeBlockContent += line + '\n';
+          continue;
+        }
+        
+        // Headers
+        if (line.startsWith('# ')) {
+          html += `<h1 style="color:#7aa2f7;margin-top:20px;border-bottom:2px solid #2a3046;padding-bottom:10px;font-size:24px;">${line.slice(2)}</h1>`;
+        } else if (line.startsWith('## ')) {
+          html += `<h2 style="color:#7aa2f7;margin-top:15px;font-size:20px;">${line.slice(3)}</h2>`;
+        } else if (line.startsWith('### ')) {
+          html += `<h3 style="color:#9ece6a;margin-top:10px;font-size:16px;">${line.slice(4)}</h3>`;
+        } else if (line.startsWith('---')) {
+          html += '<hr style="border:none;border-top:1px solid #2a3046;margin:20px 0;">';
+        } else if (line.startsWith('| ') && line.endsWith(' |')) {
+          // Table row - simple rendering
+          const cells = line.split('|').filter(c => c.trim()).map(c => c.trim());
+          html += '<div style="display:flex;gap:10px;padding:4px;border-bottom:1px solid #2a3046;">';
+          cells.forEach(cell => {
+            html += `<div style="flex:1;font-family:monospace;font-size:12px;">${cell}</div>`;
+          });
+          html += '</div>';
+        } else if (line.startsWith('- ')) {
+          html += `<li style="margin-left:20px;margin-bottom:5px;">${line.slice(2)}</li>`;
+        } else if (line.trim()) {
+          // Inline code
+          line = line.replace(/`([^`]+)`/g, '<code style="background:#1a1d2e;padding:2px 6px;border-radius:3px;font-family:monospace;font-size:12px;">$1</code>');
+          // Bold
+          line = line.replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#e0af68;">$1</strong>');
+          html += `<p style="margin:8px 0;line-height:1.6;">${line}</p>`;
+        } else {
+          html += '<br>';
+        }
+      }
+      
+      root.innerHTML = html;
+    })
+    .catch(err => {
+      // Fallback help if file not found
+      root.innerHTML = `
+        <h2 style="color:#7aa2f7;font-size:20px;">Expression Language Quick Reference</h2>
+        <h3 style="color:#9ece6a;margin-top:15px;">Signal References</h3>
+        <pre style="background:#1a1d2e;padding:10px;border-radius:4px;font-size:12px;">
+"AI:SignalName"    // Analog Input
+"AO:SignalName"    // Analog Output  
+"TC:SignalName"    // Thermocouple
+"DO:SignalName"    // Digital Output
+"PID:LoopName"     // PID Controller
+"Math:OpName"      // Math Operator
+"LE:ElementName"   // Logic Element
+"Expr:ExprName"    // Other Expression</pre>
+
+        <h3 style="color:#9ece6a;margin-top:15px;">PID Properties</h3>
+        <pre style="background:#1a1d2e;padding:10px;border-radius:4px;font-size:12px;">
+"PID:Name".PV     // Process Variable
+"PID:Name".SP     // Setpoint
+"PID:Name".ERR    // Error
+"PID:Name".OUT    // Output
+"PID:Name".MIN    // Min clamp
+"PID:Name".MAX    // Max clamp</pre>
+
+        <h3 style="color:#9ece6a;margin-top:15px;">Operators & Control Flow</h3>
+        <pre style="background:#1a1d2e;padding:10px;border-radius:4px;font-size:12px;">
+Arithmetic: + - * / % ^
+Comparison: == != < <= > >=
+Boolean: AND OR NOT
+
+IF condition THEN value
+IF condition THEN value ELSE other</pre>
+
+        <h3 style="color:#9ece6a;margin-top:15px;">Variables</h3>
+        <pre style="background:#1a1d2e;padding:10px;border-radius:4px;font-size:12px;">
+x = value              // Local (reset each cycle)
+static.x = value       // Persistent in expression
+global.x = value       // Persistent across system</pre>
+
+        <h3 style="color:#9ece6a;margin-top:15px;">Hardware Control</h3>
+        <pre style="background:#1a1d2e;padding:10px;border-radius:4px;font-size:12px;">
+"DO:Name" = 1          // Set digital output ON
+"AO:Name" = 5.5        // Set analog output to 5.5V</pre>
+
+        <h3 style="color:#9ece6a;margin-top:15px;">Common Functions</h3>
+        <pre style="background:#1a1d2e;padding:10px;border-radius:4px;font-size:12px;">
+ABS(x) SQRT(x) MIN(a,b) MAX(a,b) CLAMP(v,min,max)
+SIN(x) COS(x) TAN(x) ASIN(x) ACOS(x) ATAN(x)
+EXP(x) LOG(x) LOG10(x) POW(base,exp)</pre>
+
+        <p style="margin-top:20px;color:#9094a1;"><em>For complete documentation with examples, ensure EXPRESSION_REFERENCE.md is in the web directory.</em></p>
+      `;
+    });
+  
+  showModal(root);
 }
+
+function openExpressionDebug(widget) {
+  const idx = widget.opts.exprIndex ?? 0;
+  
+  // Fetch expression config from server
+  fetch('/api/expressions')
+    .then(r => r.json())
+    .then(data => {
+      const expr = data.expressions?.[idx];
+      
+      if (!expr) {
+        alert(`Expression ${idx} not found`);
+        return;
+      }
+      
+      const source = expr.expression || expr.source || expr.text || '';
+      
+      // Create modal content
+      const root = el('div', {
+        style: 'display:flex;flex-direction:column;gap:15px;max-width:95vw;max-height:85vh;'
+      });
+      
+      // Title
+      root.append(el('h2', {
+        style: 'color:#7aa2f7;margin:0;font-size:20px;'
+      }, `🔍 Debug: ${expr.name || `Expression ${idx}`} (Live)`));
+      
+      // Expression source with live values
+      const sourceDiv = el('div', {
+        style: 'background:#1a1d2e;padding:15px;border-radius:6px;overflow:auto;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.6;white-space:pre;min-height:200px;max-height:60vh;'
+      });
+      
+      root.append(sourceDiv);
+      
+      // Output section
+      const outputDiv = el('div', {
+        style: 'background:#2a3046;padding:12px;border-radius:6px;display:flex;align-items:center;gap:10px;'
+      });
+      root.append(outputDiv);
+      
+      // Local variables table
+      const localsDiv = el('div', {
+        style: 'background:#1a1d2e;padding:12px;border-radius:6px;max-height:200px;overflow:auto;'
+      });
+      root.append(localsDiv);
+      
+      // Static variables table
+      const staticsDiv = el('div', {
+        style: 'background:#1a1d2e;padding:12px;border-radius:6px;max-height:200px;overflow:auto;'
+      });
+      root.append(staticsDiv);
+      
+      // Update function that runs continuously
+      let updateInterval = null;
+      
+      function updateDebugView() {
+        const exprData = state.expr?.[idx];
+        if (!exprData) {
+          sourceDiv.innerHTML = '<span style="color:#d84a4a;">No live data available</span>';
+          return;
+        }
+        
+        const locals = exprData.locals || {};
+        const staticVars = exprData.static || {};
+        const executedLines = new Set(exprData.executed_lines || []);
+        
+        // Update source code with annotations
+        if (!source) {
+          sourceDiv.innerHTML = '<span style="color:#d84a4a;">No live data available</span>';
+        } else {
+          const lines = source.split('\n');
+          let annotated = '';
+          
+          // Track block stack for nested IFs: [{type: 'then'/'else', line: N}, ...]
+          let blockStack = [];
+          
+          for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            let line = lines[lineIdx];
+            let displayLine = line;
+            const trimmed = line.trim().toUpperCase();
+            
+            // Track block context with a stack
+            if (trimmed.startsWith('IF ')) {
+              // Check if THEN is on the same line
+              const hasThen = trimmed.includes(' THEN');
+              // DEBUG DISABLED: //              if (lineIdx < 25) console.log(`[BlockStack] Line ${lineIdx}: IF detected, hasThen=${hasThen}, trimmed="${trimmed.substring(0, 80)}"`);
+              if (hasThen) {
+                // Inline IF...THEN - push THEN directly
+                blockStack.push({type: 'then', line: lineIdx});
+              } else {
+                // Separate IF line - push IF marker
+                blockStack.push({type: 'if', line: lineIdx});
+              }
+            } else if (trimmed === 'THEN' || trimmed.startsWith('THEN ')) {
+              // Standalone THEN - pop IF, push THEN
+              if (blockStack.length > 0 && blockStack[blockStack.length - 1].type === 'if') {
+                blockStack.pop();
+              }
+              blockStack.push({type: 'then', line: lineIdx});
+            } else if (trimmed === 'ELSE' || trimmed.startsWith('ELSE IF ')) {
+              // Check if THEN is on the same line as ELSE IF
+              if (trimmed.startsWith('ELSE IF ') && trimmed.includes(' THEN')) {
+                // ELSE IF...THEN inline - pop THEN/IF, push ELSE, push new THEN
+                if (blockStack.length > 0) {
+                  const top = blockStack[blockStack.length - 1];
+                  if (top.type === 'then' || top.type === 'if') {
+                    blockStack.pop();
+                  }
+                }
+                blockStack.push({type: 'else', line: lineIdx});
+                blockStack.push({type: 'then', line: lineIdx});
+              } else {
+                // Regular ELSE or ELSE IF without inline THEN
+                if (blockStack.length > 0) {
+                  const top = blockStack[blockStack.length - 1];
+                  if (top.type === 'then' || top.type === 'if') {
+                    blockStack.pop();
+                  }
+                }
+                blockStack.push({type: 'else', line: lineIdx});
+              }
+            } else if (trimmed === 'ENDIF') {
+              // Pop the innermost THEN/ELSE block
+              if (blockStack.length > 0) {
+                const top = blockStack[blockStack.length - 1];
+                if (top.type === 'then' || top.type === 'else') {
+                  blockStack.pop();
+                }
+              }
+            }
+            
+            // Determine color based on innermost non-IF block
+            let currentBlock = null;
+            for (let i = blockStack.length - 1; i >= 0; i--) {
+              if (blockStack[i].type === 'then' || blockStack[i].type === 'else') {
+                currentBlock = blockStack[i].type;
+                break;
+              }
+            }
+            
+            // Check if this line executed AND is in a branch
+            const lineExecuted = executedLines.has(lineIdx);
+            const isInBranch = currentBlock !== null && 
+                              !trimmed.startsWith('IF ') && 
+                              trimmed !== 'THEN' && !trimmed.startsWith('THEN ') &&
+                              trimmed !== 'ELSE' && !trimmed.startsWith('ELSE IF ') && !trimmed.startsWith('ELSE ') &&
+                              trimmed !== 'ENDIF';
+            
+            // Debug logging for assignment lines
+            if (line.match(/^\s*\w+\s*=/) || line.match(/^\s*static\.\w+\s*=/)) {
+              // DEBUG DISABLED: //              console.log(`[ExprDebug] Line ${lineIdx}: "${line.trim()}" - executed=${lineExecuted}, isInBranch=${isInBranch}, currentBlock=${currentBlock}, blockStack=[${blockStack.map(b => b.type).join(',')}]`);
+            }
+            
+            // Color the line if it executed and is in a branch
+            if (lineExecuted && isInBranch) {
+              const lineColor = currentBlock === 'then' ? '#2faa60' : '#d84a4a';
+              displayLine = `<span style="color:${lineColor};">${line}</span>`;
+            }
+            
+            // Add value annotations
+            const assignMatch = line.match(/^\s*(\w+)\s*=\s*(.+?)(?:\/\/.*)?$/);
+            const staticMatch = line.match(/^\s*static\.(\w+)\s*=\s*(.+?)(?:\/\/.*)?$/);
+            
+            if (staticMatch) {
+              const varName = staticMatch[1];
+              const value = staticVars[varName];
+              if (value !== undefined) {
+                const valueStr = typeof value === 'number' ? value.toFixed(4) : String(value);
+                const color = getValueColor(value);
+                if (lineExecuted && isInBranch) {
+                  displayLine = displayLine.replace('</span>', ` <span style="color:${color};background:#2a3046;padding:1px 6px;border-radius:3px;font-size:11px;">{${valueStr}}</span></span>`);
+                } else {
+                  displayLine = displayLine.replace(new RegExp(`^(\\s*static\\.${varName})\\s*=`), 
+                    `$1 <span style="color:${color};background:#2a3046;padding:1px 6px;border-radius:3px;font-size:11px;">{${valueStr}}</span> =`);
+                }
+              }
+            } else if (assignMatch) {
+              const varName = assignMatch[1];
+              const value = locals[varName];
+              if (value !== undefined) {
+                const valueStr = typeof value === 'number' ? value.toFixed(4) : String(value);
+                const color = getValueColor(value);
+                if (lineExecuted && isInBranch) {
+                  displayLine = displayLine.replace('</span>', ` <span style="color:${color};background:#2a3046;padding:1px 6px;border-radius:3px;font-size:11px;">{${valueStr}}</span></span>`);
+                } else {
+                  displayLine = displayLine.replace(new RegExp(`^(\\s*${varName})\\s*=`), 
+                    `$1 <span style="color:${color};background:#2a3046;padding:1px 6px;border-radius:3px;font-size:11px;">{${valueStr}}</span> =`);
+                }
+              }
+            } else {
+              // Add variable reference annotations for non-assignment lines
+              for (const [varName, value] of Object.entries(locals)) {
+                const regex = new RegExp(`\\b${varName}\\b(?![:{])`, 'g');
+                if (regex.test(line)) {
+                  const valueStr = typeof value === 'number' ? value.toFixed(4) : String(value);
+                  const color = getValueColor(value);
+                  displayLine = displayLine.replace(regex, `${varName}<span style="color:${color};background:#2a3046;padding:1px 6px;border-radius:3px;font-size:11px;margin-left:4px;">{${valueStr}}</span>`);
+                }
+              }
+            }
+            
+            annotated += displayLine + '\n';
+          }
+          
+          sourceDiv.innerHTML = annotated;
+        }
+        
+        // Update output
+        const output = exprData.output !== undefined ? exprData.output : 0;
+        const outputColor = getValueColor(output);
+        outputDiv.innerHTML = `
+          <span style="font-size:14px;color:#9aa1b9;">► Output:</span>
+          <span style="font-size:16px;font-weight:bold;color:${outputColor};">${typeof output === 'number' ? output.toFixed(4) : String(output)}</span>
+        `;
+        
+        // Update locals table
+        const localEntries = Object.entries(locals);
+        if (localEntries.length > 0) {
+          localsDiv.innerHTML = `
+            <div style="font-size:12px;color:#7aa2f7;margin-bottom:8px;font-weight:bold;">Local Variables:</div>
+            <table style="width:100%;font-size:11px;font-family:Consolas,Monaco,monospace;">
+              ${localEntries.map(([name, val]) => {
+                const valStr = typeof val === 'number' ? val.toFixed(4) : String(val);
+                const color = getValueColor(val);
+                return `<tr>
+                  <td style="color:#9aa1b9;padding:2px 8px 2px 0;">${name}</td>
+                  <td style="color:${color};padding:2px 0;text-align:right;">${valStr}</td>
+                </tr>`;
+              }).join('')}
+            </table>
+          `;
+        } else {
+          localsDiv.innerHTML = '<div style="font-size:12px;color:#666;">No local variables</div>';
+        }
+        
+        // Update statics table
+        const staticEntries = Object.entries(staticVars);
+        if (staticEntries.length > 0) {
+          staticsDiv.innerHTML = `
+            <div style="font-size:12px;color:#7aa2f7;margin-bottom:8px;font-weight:bold;">Static Variables:</div>
+            <table style="width:100%;font-size:11px;font-family:Consolas,Monaco,monospace;">
+              ${staticEntries.map(([name, val]) => {
+                const valStr = typeof val === 'number' ? val.toFixed(4) : String(val);
+                const color = getValueColor(val);
+                return `<tr>
+                  <td style="color:#9aa1b9;padding:2px 8px 2px 0;">static.${name}</td>
+                  <td style="color:${color};padding:2px 0;text-align:right;">${valStr}</td>
+                </tr>`;
+              }).join('')}
+            </table>
+          `;
+        } else {
+          staticsDiv.innerHTML = '<div style="font-size:12px;color:#666;">No static variables</div>';
+        }
+      }
+      
+      // Initial update
+      updateDebugView();
+      
+      // Update every 100ms for live values
+      updateInterval = setInterval(updateDebugView, 100);
+      
+      // Show modal with cleanup on close
+      showModal(root, () => {
+        if (updateInterval) {
+          clearInterval(updateInterval);
+          updateInterval = null;
+        }
+      });
+    })
+    .catch(err => {
+      // DEBUG DISABLED: //      console.error('[ExprDebug] Error:', err);
+      alert('Failed to load expression: ' + err.message);
+    });
+}
+
+/* ----------------------------- Expression Editor -------------------------------- */
+/* ----------------------------- Expression Editor -------------------------------- */
+async function openExpressionEditor() {
+  let expressions = [];
+  
+  // Load expressions from server
+  try {
+    const resp = await fetch('/api/expressions');
+    const data = await resp.json();
+    expressions = data.expressions || [];
+  } catch (e) {
+    console.error('Failed to load expressions:', e);
+  }
+  
+  const root = el('div', {});
+  const title = el('h2', {}, 'Expression Editor');
+  
+  // ADD: Load button at top
+  const topButtons = el('div', {style: 'display:flex; gap:8px; margin-bottom:12px;'});
+  const loadBtn = el('button', {
+    className: 'btn',
+    onclick: () => {
+      const inp = el('input', {type: 'file', accept: '.json'});
+      inp.onchange = async () => {
+        const f = inp.files?.[0];
+        if (!f) return;
+        try {
+          const text = await f.text();
+          const loaded = JSON.parse(text);
+          expressions = loaded.expressions || [];
+          renderList();
+          if (expressions.length > 0) {
+            selectExpression(expressions[0]);
+          }
+          alert(`Loaded ${expressions.length} expressions from ${f.name}`);
+        } catch(e) {
+          alert('Failed to load: ' + e.message);
+        }
+      };
+      inp.click();
+    }
+  }, '📁 Load from File');
+  topButtons.append(loadBtn);
+  
+  const container = el('div', {style: 'display:flex; gap:20px; height:60vh;'});
+  
+  // Left panel: Expression list
+  const listPanel = el('div', {style: 'flex:1; display:flex; flex-direction:column; gap:10px; overflow:auto;'});
+  
+  // Right panel: Editor
+  const editorPanel = el('div', {style: 'flex:2; display:flex; flex-direction:column; gap:10px;'});
+  
+  let selectedExpr = null;
+  
+  function renderList() {
+    listPanel.innerHTML = '';
+    
+    const addBtn = el('button', {
+      className: 'btn',
+      onclick: () => {
+        const name = prompt('Expression name:');
+        if (!name) return;
+        expressions.push({
+          name: name,
+          enabled: true,
+          expression: '// Write your expression here\n0',
+          execution_rate_hz: null  // ADD: Initialize new field
+        });
+        renderList();
+        selectExpression(expressions[expressions.length - 1]);
+      }
+    }, '+ Add Expression');
+    
+    listPanel.append(addBtn);
+    
+    expressions.forEach((expr, idx) => {
+      const card = el('div', {
+        style: `padding:10px; border:1px solid ${selectedExpr === expr ? '#4a9eff' : '#2a3046'}; border-radius:6px; cursor:pointer; background:${selectedExpr === expr ? '#1a2030' : 'transparent'}`,
+        onclick: () => selectExpression(expr)
+      });
+      
+      const title = el('div', {style: 'font-weight:bold; margin-bottom:5px;'}, expr.name);
+      
+      // ADD: Show execution rate if set
+      const rateText = expr.execution_rate_hz ? ` @ ${expr.execution_rate_hz}Hz` : '';
+      const status = el('div', {style: `font-size:12px; color:${expr.enabled ? '#4a9eff' : '#666'}`}, 
+        (expr.enabled ? '✓ Enabled' : '✗ Disabled') + rateText);
+      
+      card.append(title, status);
+      listPanel.append(card);
+    });
+  }
+  
+  function selectExpression(expr) {
+    selectedExpr = expr;
+    renderList();
+    renderEditor();
+  }
+  
+  function renderEditor() {
+    editorPanel.innerHTML = '';
+    
+    if (!selectedExpr) {
+      editorPanel.append(el('div', {style: 'color:#666; text-align:center; margin-top:50px;'}, 
+        'Select an expression to edit'));
+      return;
+    }
+    
+    // Expression name and enabled
+    const topRow = el('div', {className: 'row', style: 'margin-bottom:10px;'});
+    topRow.append(
+      el('label', {style: 'flex:1'}, [
+        'Name: ',
+        el('input', {
+          type: 'text',
+          value: selectedExpr.name,
+          oninput: e => {
+            selectedExpr.name = e.target.value;
+            renderList();  // Update list when name changes
+          },
+          style: 'width:100%;'
+        })
+      ]),
+      el('label', {}, [
+        el('input', {
+          type: 'checkbox',
+          checked: selectedExpr.enabled,
+          onchange: e => {
+            selectedExpr.enabled = e.target.checked;
+            renderList();  // Update list when enabled changes
+          }
+        }),
+        ' Enabled'
+      ])
+    );
+    editorPanel.append(topRow);
+    
+    // ADD: Execution rate row (small, unobtrusive)
+    const rateRow = el('div', {style: 'margin-bottom:10px; display:flex; align-items:center; gap:8px;'});
+    rateRow.append(
+      el('label', {style: 'font-size:12px; color:#8b949e;'}, 'Execution Rate:'),
+      el('input', {
+        type: 'number',
+        min: '0',
+        step: '1',
+        placeholder: 'Hz (empty = sample rate)',
+        value: selectedExpr.execution_rate_hz || '',
+        oninput: e => {
+          const val = parseFloat(e.target.value);
+          selectedExpr.execution_rate_hz = (val > 0) ? val : null;
+          renderList();
+        },
+        style: 'width:100px; padding:4px; font-size:12px;'
+      }),
+      el('span', {style: 'font-size:11px; color:#666;'}, 'Hz')
+    );
+    editorPanel.append(rateRow);
+    
+    // Expression textarea - KEEP ORIGINAL STYLING
+    const textareaLabel = el('div', {style: 'font-weight:bold; margin-bottom:5px;'}, 'Expression:');
+    const textarea = el('textarea', {
+      value: selectedExpr.expression || '',
+      oninput: e => selectedExpr.expression = e.target.value,
+      style: 'width:100%; height:450px; font-family:monospace; font-size:14px; background:#0d1117; color:#c9d1d9; border:1px solid #2a3046; border-radius:6px; padding:10px;'
+    });
+    
+    editorPanel.append(textareaLabel, textarea);
+    
+    // Syntax check button and result - KEEP ORIGINAL GREEN/RED STYLING
+    const syntaxRow = el('div', {style: 'display:flex; gap:10px; align-items:center;'});
+    const syntaxResult = el('div', {style: 'flex:1; padding:10px; border-radius:6px; font-size:14px; font-family:monospace;'});
+    
+    const checkBtn = el('button', {
+      className: 'btn',
+      onclick: async () => {
+        try {
+          const resp = await fetch('/api/expressions/check', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({expression: selectedExpr.expression})
+          });
+          const result = await resp.json();
+          
+          if (result.ok) {
+            // GREEN for success
+            syntaxResult.style.background = '#1a3a1a';
+            syntaxResult.style.color = '#4a9';
+            let message = `✓ Syntax OK - Result: ${result.result.toFixed(4)}`;
+            
+            if (result.locals && Object.keys(result.locals).length > 0) {
+              message += `\nLocal vars: ${JSON.stringify(result.locals, null, 2)}`;
+            }
+            
+            // Display warnings if any
+            if (result.warnings && result.warnings.length > 0) {
+              message += '\n\n⚠️ WARNINGS:\n';
+              result.warnings.forEach(w => {
+                message += `  ${w.message}\n`;
+              });
+            }
+            
+            syntaxResult.textContent = message;
+          } else {
+            // RED for error with X
+            syntaxResult.style.background = '#3a1a1a';
+            syntaxResult.style.color = '#f88';
+            syntaxResult.textContent = `✗ Error: ${result.error}`;
+          }
+        } catch (e) {
+          syntaxResult.style.background = '#3a1a1a';
+          syntaxResult.style.color = '#f88';
+          syntaxResult.textContent = `✗ Failed to check: ${e.message}`;
+        }
+      }
+    }, '🔍 Check Syntax');
+    
+    syntaxRow.append(checkBtn, syntaxResult);
+    editorPanel.append(syntaxRow);
+    
+    // Delete button
+    const deleteBtn = el('button', {
+      className: 'btn danger',
+      onclick: () => {
+        if (confirm(`Delete expression "${selectedExpr.name}"?`)) {
+          const idx = expressions.indexOf(selectedExpr);
+          expressions.splice(idx, 1);
+          selectedExpr = null;
+          renderList();
+          renderEditor();
+        }
+      }
+    }, '🗑 Delete');
+    
+    editorPanel.append(deleteBtn);
+    
+
+  }
+  
+  container.append(listPanel, editorPanel);
+  
+  // Global variables viewer
+  const globalsSection = el('div', {style: 'margin-top:20px; padding:15px; background:#1a2030; border-radius:6px;'});
+  const globalsTitle = el('div', {style: 'font-weight:bold; margin-bottom:10px;'}, 'Global Variables (static.*)');
+  const globalsTable = el('table', {className: 'form', style: 'width:100%;'});
+  
+  async function refreshGlobals() {
+    try {
+      const resp = await fetch('/api/expressions/globals');
+      const data = await resp.json();
+      
+      globalsTable.innerHTML = '';
+      const thead = el('thead');
+      thead.append(el('tr', {}, [
+        el('th', {}, 'Name'),
+        el('th', {}, 'Value'),
+        el('th', {}, 'Actions')
+      ]));
+      globalsTable.append(thead);
+      
+      const tbody = el('tbody');
+      const globals = data.globals || {};
+      
+      if (Object.keys(globals).length === 0) {
+        tbody.append(el('tr', {}, [
+          el('td', {colspan: 3, style: 'text-align:center; color:#666;'}, 'No global variables yet')
+        ]));
+      } else {
+        Object.entries(globals).forEach(([name, value]) => {
+          const tr = el('tr', {}, [
+            el('td', {}, `static.${name}`),
+            el('td', {}, value.toFixed(4)),
+            el('td', {}, el('button', {
+              className: 'btn danger',
+              onclick: async () => {
+                if (confirm(`Delete static.${name}?`)) {
+                  await fetch('/api/expressions/globals', {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: name})
+                  });
+                  refreshGlobals();
+                }
+              }
+            }, '×'))
+          ]);
+          tbody.append(tr);
+        });
+      }
+      
+      globalsTable.append(tbody);
+    } catch (e) {
+      console.error('Failed to load globals:', e);
+    }
+  }
+  
+  const clearGlobalsBtn = el('button', {
+    className: 'btn danger',
+    onclick: async () => {
+      if (confirm('Clear ALL global variables?')) {
+        await fetch('/api/expressions/globals/clear', {method: 'POST'});
+        refreshGlobals();
+      }
+    },
+    style: 'margin-top:10px;'
+  }, 'Clear All Globals');
+  
+  globalsSection.append(globalsTitle, globalsTable, clearGlobalsBtn);
+  
+  // Initial render
+  renderList();
+  renderEditor();
+  refreshGlobals();
+  
+  // Save and Save As buttons
+  const saveButtons = el('div', {style: 'display:flex; gap:8px; margin-top:20px;'});
+  
+  const saveBtn = el('button', {
+    className: 'btn',
+    onclick: async () => {
+      try {
+        const resp = await fetch('/api/expressions', {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({expressions: expressions})
+        });
+        const result = await resp.json();
+        if (result.ok) {
+          alert('Expressions saved!');
+        } else {
+          alert('Failed to save: ' + result.error);
+        }
+      } catch (e) {
+        alert('Failed to save: ' + e.message);
+      }
+    }
+  }, '💾 Save');
+  
+  const reloadBtn = el('button', {
+    className: 'btn',
+    onclick: async () => {
+      try {
+        const resp = await fetch('/api/expressions/reload', {method: 'POST'});
+        const result = await resp.json();
+        if (result.ok) {
+          alert(`✅ Reloaded ${result.count} expressions! No server restart needed.`);
+        } else {
+          alert('Failed to reload: ' + result.error);
+        }
+      } catch (e) {
+        alert('Failed to reload: ' + e.message);
+      }
+    }
+  }, '🔄 Hot Reload');
+  
+  const saveAsBtn = el('button', {
+    className: 'btn',
+    onclick: () => {
+      // Create JSON data
+      const data = JSON.stringify({expressions: expressions}, null, 2);
+      const blob = new Blob([data], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      
+      // Trigger download - Firefox will show native "Save As" dialog
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'expressions.json';  // Default filename
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      URL.revokeObjectURL(url);
+    }
+  }, '💾 Save As...');
+  
+  saveButtons.append(saveBtn, reloadBtn, saveAsBtn);
+  
+  root.append(title, topButtons, container, globalsSection, saveButtons);
+  showModal(root);
+}
+
 
 /* ----------------------------- form bits -------------------------------- */
 function fieldset(title, inner) {

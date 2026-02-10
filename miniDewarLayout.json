@@ -11,7 +11,7 @@
           "w": 166,
           "h": 104,
           "opts": {
-            "title": "Spark Expr",
+            "title": "Spark",
             "outputType": "var",
             "doIndex": 0,
             "varName": "sparkON",
@@ -25,8 +25,8 @@
         {
           "id": "5b0a69f5-cb75-42a3-a70f-4cd7daf8fbab",
           "type": "expr",
-          "x": 290,
-          "y": 70,
+          "x": 413,
+          "y": 99,
           "w": 350,
           "h": 200,
           "opts": {
@@ -37,54 +37,28 @@
           }
         },
         {
-          "id": "6c9222ce-6a37-47ba-90a5-721a9927a310",
-          "type": "dobutton",
-          "x": 685,
-          "y": 79,
-          "w": 172,
-          "h": 101,
-          "opts": {
-            "title": "Direct Buzz DO",
-            "outputType": "do",
-            "doIndex": 0,
-            "varName": "button1",
-            "activeHigh": true,
-            "mode": "buzz",
-            "buzzHz": 100,
-            "actuationTime": 25,
-            "_timer": null
-          }
-        },
-        {
-          "id": "44a52c62-f4da-4586-8275-9ca5d877882e",
+          "id": "e9172e3e-d576-4955-9783-01fb7ba77e6f",
           "type": "chart",
-          "x": 25,
-          "y": 340,
-          "w": 1630,
-          "h": 775,
+          "x": 78,
+          "y": 344,
+          "w": 1740,
+          "h": 532,
           "opts": {
             "title": "Chart",
             "series": [
               {
-                "kind": "do",
-                "index": 0,
-                "name": "Scale",
-                "displayScale": 1,
-                "displayOffset": 0
-              },
-              {
                 "kind": "ai",
-                "index": 0,
-                "name": "Scale",
+                "index": 2,
+                "name": "Pressure",
                 "displayScale": 1,
                 "displayOffset": 0
               }
             ],
             "span": 60,
             "paused": false,
-            "scale": "auto",
+            "scale": "manual",
             "min": 0,
-            "max": 10,
+            "max": 5,
             "filterHz": 0,
             "cursorMode": "follow",
             "yGridLines": 5
@@ -94,6 +68,46 @@
             "paused": false,
             "tFreeze": 0
           }
+        },
+        {
+          "id": "18940384-6c8b-4e66-a53c-909592d495af",
+          "type": "dobutton",
+          "x": 170,
+          "y": 946,
+          "w": 156,
+          "h": 94,
+          "opts": {
+            "title": "Outlet",
+            "outputType": "do",
+            "doIndex": 1,
+            "varName": "button1",
+            "activeHigh": false,
+            "mode": "toggle",
+            "buzzHz": 10,
+            "actuationTime": 0,
+            "_timer": null
+          },
+          "debugCount": 8
+        },
+        {
+          "id": "fe2a5123-2682-460c-a3d3-c0ecf84bc61a",
+          "type": "dobutton",
+          "x": 342,
+          "y": 947,
+          "w": 165,
+          "h": 94,
+          "opts": {
+            "title": "Vent",
+            "outputType": "do",
+            "doIndex": 0,
+            "varName": "button1",
+            "activeHigh": false,
+            "mode": "toggle",
+            "buzzHz": 10,
+            "actuationTime": 0,
+            "_timer": null
+          },
+          "debugCount": 8
         }
       ]
     }

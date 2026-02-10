@@ -123,6 +123,17 @@ class MathOpManager:
                     return self.outputs[inp.index]
                 return 0.0
             
+            elif inp.kind == "expr":
+                # Reference to expression output
+                expr_vals = state.get("expr", [])
+                if inp.index < len(expr_vals):
+                    # Handle both dict format and raw float
+                    val = expr_vals[inp.index]
+                    if isinstance(val, dict):
+                        val = val.get("output", 0.0)
+                    return val if math.isfinite(val) else 0.0
+                return 0.0
+            
             elif inp.kind == "value":
                 # Use fixed value
                 return inp.value if inp.value is not None else 0.0

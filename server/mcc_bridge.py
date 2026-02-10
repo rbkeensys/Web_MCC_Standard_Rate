@@ -1,8 +1,10 @@
 # server/mcc_bridge.py
+__version__ = "3.0.2"  # Added read_ai_all_burst with board_filter parameter
+BRIDGE_VERSION = "2.0.6"  # Fixed missing imports
+
 import asyncio
 from typing import List, Optional
 
-BRIDGE_VERSION = "0.5.9"  # Fixed: E-TC init no longer fails on open circuit channels
 
 # ---------- Try mcculw (E-1608 AI/AO/DO and optional TCs) ----------
 HAVE_MCCULW = False
@@ -90,96 +92,112 @@ class MCCBridge:
     def __init__(self):
         self.cfg: Optional[AppConfig] = None
 
-        # AO/DO soft mirrors for UI snapshots
-        self._do_bits = [0] * 8
-        self._ao_vals = [0.0, 0.0]
-        self._do_active_high = [True] * 8
+        # Multi-board support: store all enabled boards
+        self._boards_1608 = []  # List of E-1608 board numbers
+        self._boards_etc_uldaq = []  # List of (board_num, dev, tdev) tuples for ULDAQ
+        self._boards_etc_mcc = []  # List of E-TC board numbers for mcculw
+
+        # AO/DO soft mirrors - sized dynamically based on board count
+        self._do_bits = []  # num_1608_boards * 8
+        self._ao_vals = []  # num_1608_boards * 2
+        self._do_active_high = []
         self._buzz_tasks = {}
 
-        # E-TC handles
-        self._etc_uldaq_dev: Optional[DaqDevice] = None
-        self._etc_uldaq_tdev = None
-        self._etc_uldaq_ok = False
-
-        self._etc_mcc_board: Optional[int] = None
-
-        # Avoid re-writing TC type every sample
-        self._tc_type_set_cache = {}  # ch -> "K"/"J"/...
-        # AUTO-DETECTION: Track if we've detected TCs yet (runtime only, not saved)
+        # TC type cache - now indexed by global channel index
+        self._tc_type_set_cache = {}  # global_ch -> "K"/"J"/...
+        # AUTO-DETECTION
         self._tc_detected = False
-        self._tc_runtime_include = {}  # ch -> bool (runtime override)
+        self._tc_runtime_include = {}  # global_ch -> bool
 
     # ---------------- Lifecycle ----------------
     def open(self, cfg: AppConfig):
+        """Open and configure ALL enabled boards"""
         self.cfg = cfg
-
-        # Configure E-1608 DIO direction and AI mode on mcculw path if available
-        if HAVE_MCCULW:
-            try:
-                # DIO: AUXPORT -> OUT (8 bits)
-                ul.d_config_port(
-                    cfg.board1608.boardNum,
-                    DigitalPortType.AUXPORT,
-                    1,  # 1 == OUT
-                )
-                print("[MCCBridge] DIO configured AUXPORT -> OUT")
-            except Exception as e:
-                print(f"[MCCBridge] DIO config warn: {e}")
-            try:
-                mode = (
-                    AnalogInputMode.SINGLE_ENDED
-                    if str(cfg.board1608.aiMode).upper().startswith("SE")
-                    else AnalogInputMode.DIFFERENTIAL
-                )
-                ul.a_input_mode(cfg.board1608.boardNum, mode)
-                print(f"[MCCBridge] AI mode -> {mode.name}")
-            except Exception as e:
-                print(f"[MCCBridge] AI mode set warn: {e}")
-
-        # Try ULDAQ for E-TC
-        self._etc_uldaq_ok = False
-        self._etc_uldaq_dev = None
-        self._etc_uldaq_tdev = None
-        if HAVE_ULDAQ:
-            try:
-                inv = get_daq_device_inventory(InterfaceType.ETHERNET)
-                if not inv:
-                    inv = get_daq_device_inventory(InterfaceType.ANY)
-                if inv and 0 <= cfg.boardetc.boardNum < len(inv):
-                    dev = DaqDevice(inv[cfg.boardetc.boardNum])
-                    dev.connect()
-                    tdev = dev.get_temp_device()
-                    if tdev is not None:
-                        self._etc_uldaq_dev = dev
-                        self._etc_uldaq_tdev = tdev
-                        self._etc_uldaq_ok = True
-                        print("[MCCBridge] E-TC via ULDAQ ready")
-            except Exception as e:
-                print(f"[MCCBridge] ULDAQ E-TC open failed: {e}")
-
-        # Fallback to mcculw for E-TC (cbTIn) if available
-        self._etc_mcc_board = None
-        if not self._etc_uldaq_ok and HAVE_MCCULW:
-            try:
-                self._etc_mcc_board = cfg.boardetc.boardNum
-                # Smoke test read (expect open circuit errors, just verify board responds)
-                try:
-                    _ = ul.t_in(self._etc_mcc_board, 0, MCCTempScale.CELSIUS)
-                except Exception as e:
-                    # Open circuit is expected and OK - it means board is responding
-                    # Only fail if it's a different error (board not found, etc)
-                    err_str = str(e).lower()
-                    if "open connection" in err_str or "open circuit" in err_str:
-                        # This is fine - board is working, just no TC connected
-                        pass
-                    else:
-                        # Real error - board not responding
-                        raise
-                print("[MCCBridge] E-TC via mcculw ready")
-                print("[MCCBridge] NOTE: TC types must be configured in InstaCal (not via API)")
-            except Exception as e:
-                self._etc_mcc_board = None
-                print(f"[MCCBridge] mcculw E-TC open failed: {e}")
+        
+        # Clear previous board lists
+        self._boards_1608 = []
+        self._boards_etc_uldaq = []
+        self._boards_etc_mcc = []
+        
+        # === Configure ALL E-1608 boards ===
+        if cfg.boards1608:
+            for board_cfg in cfg.boards1608:
+                if not board_cfg.enabled:
+                    continue
+                    
+                board_num = board_cfg.boardNum
+                self._boards_1608.append(board_num)
+                
+                if HAVE_MCCULW:
+                    try:
+                        # DIO: AUXPORT -> OUT (8 bits)
+                        ul.d_config_port(board_num, DigitalPortType.AUXPORT, 1)
+                        print(f"[MCCBridge] E-1608 #{board_num}: DIO configured AUXPORT -> OUT")
+                    except Exception as e:
+                        print(f"[MCCBridge] E-1608 #{board_num}: DIO config warn: {e}")
+                    
+                    try:
+                        mode = (
+                            AnalogInputMode.SINGLE_ENDED
+                            if str(board_cfg.aiMode).upper().startswith("SE")
+                            else AnalogInputMode.DIFFERENTIAL
+                        )
+                        ul.a_input_mode(board_num, mode)
+                        print(f"[MCCBridge] E-1608 #{board_num}: AI mode -> {mode.name}")
+                    except Exception as e:
+                        print(f"[MCCBridge] E-1608 #{board_num}: AI mode warn: {e}")
+        
+        num_1608 = len(self._boards_1608)
+        print(f"[MCCBridge] Configured {num_1608} E-1608 board(s)")
+        
+        # Initialize DO/AO mirrors for all boards
+        self._do_bits = [0] * (num_1608 * 8)
+        self._ao_vals = [0.0] * (num_1608 * 2)
+        self._do_active_high = [True] * (num_1608 * 8)
+        
+        # === Configure ALL E-TC boards ===
+        if cfg.boardsetc:
+            for board_cfg in cfg.boardsetc:
+                if not board_cfg.enabled:
+                    continue
+                
+                board_num = board_cfg.boardNum
+                
+                # Try ULDAQ first
+                opened_uldaq = False
+                if HAVE_ULDAQ:
+                    try:
+                        inv = get_daq_device_inventory(InterfaceType.ETHERNET)
+                        if not inv:
+                            inv = get_daq_device_inventory(InterfaceType.ANY)
+                        if inv and 0 <= board_num < len(inv):
+                            dev = DaqDevice(inv[board_num])
+                            dev.connect()
+                            tdev = dev.get_temp_device()
+                            if tdev is not None:
+                                self._boards_etc_uldaq.append((board_num, dev, tdev))
+                                print(f"[MCCBridge] E-TC #{board_num}: opened via ULDAQ")
+                                opened_uldaq = True
+                    except Exception as e:
+                        print(f"[MCCBridge] E-TC #{board_num}: ULDAQ failed: {e}")
+                
+                # Fallback to mcculw if ULDAQ didn't work
+                if not opened_uldaq and HAVE_MCCULW:
+                    try:
+                        # Smoke test
+                        try:
+                            _ = ul.t_in(board_num, 0, MCCTempScale.CELSIUS)
+                        except Exception as e:
+                            err_str = str(e).lower()
+                            if "open connection" not in err_str and "open circuit" not in err_str:
+                                raise
+                        self._boards_etc_mcc.append(board_num)
+                        print(f"[MCCBridge] E-TC #{board_num}: opened via mcculw")
+                    except Exception as e:
+                        print(f"[MCCBridge] E-TC #{board_num}: mcculw failed: {e}")
+        
+        total_etc = len(self._boards_etc_uldaq) + len(self._boards_etc_mcc)
+        print(f"[MCCBridge] Configured {total_etc} E-TC board(s)")
 
     def close(self):
         # Ensure DOs off if you want a safe state (optional):
@@ -195,31 +213,67 @@ class MCCBridge:
         self._etc_mcc_board = None
 
     # ---------------- Analog Inputs (E-1608) ----------------
-    def read_ai_all(self) -> List[float]:
-        """Return 8 AI channels in volts (eng units). Simulator only if no driver."""
-        if not HAVE_MCCULW:
-            # Simulator (only if absolutely no driver)
-            import math, time
+    def read_ai_all(self, board_filter=None):
+        """
+        Read AI from E-1608 boards, return concatenated list
+        
+        Args:
+            board_filter: Optional list of board numbers to read from. If None, reads all boards.
+        """
+        all_values = []
+        
+        boards_to_read = board_filter if board_filter is not None else self._boards_1608
+        
+        for board_num in boards_to_read:
+            if board_num not in self._boards_1608:
+                continue  # Skip boards not in our list
+                
+            board_values = [0.0] * 8  # Default if read fails
+            
+            if HAVE_MCCULW:
+                try:
+                    # Read all 8 channels from this board
+                    for ch in range(8):
+                        raw = ul.a_in(board_num, ch, ULRange.BIP10VOLTS)  # Raw counts
+                        val = ul.to_eng_units(board_num, ULRange.BIP10VOLTS, raw)  # Convert to volts
+                        board_values[ch] = val
+                    # Debug first read only
+                    if not hasattr(self, '_ai_debug_done'):
+                        print(f"[MCCBridge] Board #{board_num} AI read OK: {board_values[:4]}...")
+                        self._ai_debug_done = True
+                except Exception as e:
+                    print(f"[MCCBridge] E-1608 #{board_num} AI read FAILED: {e}")
+            else:
+                if not hasattr(self, '_mcculw_warn_done'):
+                    print(f"[MCCBridge] WARNING: HAVE_MCCULW=False, returning zeros!")
+                    self._mcculw_warn_done = True
+            
+            all_values.extend(board_values)
+        
+        # Returns [board0_ch0-7, board1_ch0-7, board2_ch0-7, ...]
+        return all_values
 
-            t = time.time()
-            return [
-                0.5 * math.sin(2 * math.pi * (0.2 + i * 0.07) * t)
-                for i in range(8)
-            ]
-        vals: List[float] = []
-        bd = self.cfg.board1608.boardNum
-        rng = ULRange.BIP10VOLTS
-        for ch in range(8):
-            try:
-                raw = ul.a_in(bd, ch, rng)  # raw counts
-                v = ul.to_eng_units(bd, rng, raw)  # volts
-            except Exception as e:
-                print(f"[MCCBridge] AI ch{ch} read failed: {e}")
-                v = float("nan")
-            vals.append(v)
-        return vals
+    def read_ai_all_burst(self, rate_hz: int = 100, samples: int = 50, board_filter=None):
+        """
+        Read multiple samples in burst mode using hardware scan
+        Falls back to sequential reads if scan not available
+        
+        Args:
+            rate_hz: Sampling rate
+            samples: Number of samples to read
+            board_filter: Optional list of board numbers to read from
+            
+        Returns:
+            List of samples, each sample is list of AI values
+        """
+        # For now, just do fast sequential reads
+        # TODO: Implement proper ul.a_in_scan for true burst mode
+        burst_data = []
+        for _ in range(samples):
+            sample = self.read_ai_all(board_filter=board_filter)
+            burst_data.append(sample)
+        return burst_data
 
-    # ---------------- Thermocouples (E-TC) ----------------
     def _set_tc_type(self, ch: int, typ: str):
         """Set TC type for channel. ULDAQ only - mcculw uses InstaCal configuration."""
         t = (typ or "K").upper()
@@ -260,179 +314,107 @@ class MCCBridge:
         # No TC hardware available
         return False
 
-    def read_tc_all(self) -> List[float]:
-        """Return TC channels as sparse array indexed by channel number.
-        Returns list of 8 floats, with NaN for non-detected channels.
-        Auto-detects working channels on first call. Missing driver -> []."""
-        if self.cfg is None:
-            return []
-
-        # AUTO-DETECTION: On first call, probe all channels to see which are present
-        if not self._tc_detected:
-            self._tc_detected = True
-            
-            # STEP 1: Configure TC types (ULDAQ only, mcculw uses InstaCal)
-            if self._etc_uldaq_ok:
-                print("[MCCBridge] Configuring TC types via ULDAQ...")
-                for rec in self.cfg.thermocouples:
-                    ch = int(rec.ch)
-                    tc_type = (rec.type or "K").upper()
-                    print(f"[MCCBridge] Setting TC{ch} ({rec.name}) to type '{tc_type}'...")
-                    success = self._set_tc_type(ch, tc_type)
-                    if not success:
-                        print(f"[MCCBridge] WARNING: Failed to set TC{ch} type!")
-            elif HAVE_MCCULW and self._etc_mcc_board is not None:
-                print("[MCCBridge] Using mcculw E-TC - TC types configured in InstaCal")
-                # Just cache the expected types from config
-                for rec in self.cfg.thermocouples:
-                    ch = int(rec.ch)
-                    tc_type = (rec.type or "K").upper()
-                    self._tc_type_set_cache[ch] = tc_type
-            
-            # Print configuration summary
-            if self._tc_type_set_cache:
-                print("[MCCBridge] TC Type Configuration Summary:")
-                for rec in self.cfg.thermocouples:
-                    ch = int(rec.ch)
-                    cached_type = self._tc_type_set_cache.get(ch, "NOT SET")
-                    config_type = (rec.type or "K").upper()
-                    if self._etc_uldaq_ok:
-                        match = "✓" if cached_type == config_type else "✗"
-                        print(f"[MCCBridge]   TC{ch} ({rec.name}): Config={config_type}, Set={cached_type} {match}")
-                    else:
-                        print(f"[MCCBridge]   TC{ch} ({rec.name}): Expected={config_type} (configured in InstaCal)")
-            
-            # STEP 2: Auto-detect which channels are actually present
-            print("[MCCBridge] Auto-detecting connected thermocouples...")
-            print(f"[MCCBridge] Probing ALL 8 TC channels (0-7)...")
-
-            # Create a lookup of configured channels for type info
-            configured_channels = {int(rec.ch): rec for rec in self.cfg.thermocouples}
-
-            # Probe ALL 8 channels regardless of config
-            for ch in range(8):
-                rec = configured_channels.get(ch)
-                tc_name = rec.name if rec else f"TC{ch}"
-                tc_type = rec.type if rec else "K"
-                is_configured = rec is not None
-                is_enabled = rec.include if rec else False
-                
-                detected = False
-                val = 0.0
-                error_msg = None
-
-                # Try ULDAQ path
-                if self._etc_uldaq_ok and self._etc_uldaq_tdev is not None:
-                    try:
-                        # Type already set above, just read
-                        val = self._etc_uldaq_tdev.t_in(ch, TempScale.CELSIUS, TInFlags.DEFAULT)
-                        # Check if we got a reasonable value (not open circuit error)
-                        if -200 < val < 2000:  # Reasonable TC range
-                            detected = True
-                        else:
-                            error_msg = f"Out of range: {val:.1f}°C"
-                    except Exception as e:
-                        # Channel not present - this is expected for missing TCs
-                        error_msg = str(e)
-                        detected = False
-
-                # Try mcculw fallback
-                elif HAVE_MCCULW and self._etc_mcc_board is not None:
-                    try:
-                        # Read without setting type (configured in InstaCal)
-                        val = ul.t_in(self._etc_mcc_board, ch, MCCTempScale.CELSIUS)
-                        # Check if we got a reasonable value
-                        if -200 < val < 2000:  # Reasonable TC range
-                            detected = True
-                        else:
-                            error_msg = f"Out of range: {val:.1f}°C"
-                    except Exception as e:
-                        # Channel not present - this is expected for missing TCs
-                        error_msg = f"{type(e).__name__}: {str(e)}"
-                        detected = False
-                else:
-                    error_msg = "No TC driver initialized"
-
-                # Always store detection result
-                self._tc_runtime_include[ch] = detected
-
-                config_status = ""
-                if is_configured:
-                    config_status = "enabled in config" if is_enabled else "disabled in config"
-                else:
-                    config_status = "NOT in config"
-                
-                if detected:
-                    print(f"[MCCBridge] ✓ TC channel {ch} ({tc_name}) detected at {val:.1f}°C ({config_status})")
-                else:
-                    if error_msg:
-                        print(f"[MCCBridge] ✗ TC channel {ch} ({tc_name}) NOT detected: {error_msg} ({config_status})")
-                    else:
-                        print(f"[MCCBridge] ✗ TC channel {ch} ({tc_name}) NOT detected ({config_status})")
-
-            enabled = [ch for ch, en in self._tc_runtime_include.items() if en]
-            print(f"[MCCBridge] TC detection complete. Active channels: {enabled}")
-            
-            if enabled and not any(configured_channels.get(ch) for ch in enabled):
-                print(f"[MCCBridge] WARNING: Detected TCs {enabled} but none are in config! Add them to config.json to use them.")
-
-        # Build sparse array: 8 elements indexed by channel number
-        # Non-detected channels get NaN
-        tc_sparse = [float("nan")] * 8
+    def read_tc_all(self):
+        """Read TC from ALL E-TC boards, return concatenated list"""
+        all_values = []
         
-        for rec in self.cfg.thermocouples:
-            ch = int(rec.ch)
-            if ch < 0 or ch >= 8:
-                continue  # Skip invalid channel numbers
-            
-            # Only read detected channels
-            if not self._tc_runtime_include.get(ch, False):
-                # Not detected - leave as NaN
-                continue
-            
-            tc_type = rec.type or "K"
-            tc_name = rec.name or f"TC{ch}"
-            
-            # ULDAQ path
-            if self._etc_uldaq_ok and self._etc_uldaq_tdev is not None:
-                try:
-                    val = self._etc_uldaq_tdev.t_in(
-                        int(ch), TempScale.CELSIUS, TInFlags.DEFAULT
-                    )
-                    tc_sparse[ch] = float(val)
-                except Exception as e:
-                    print(f"[MCCBridge] ULDAQ t_in ch{ch} ({tc_name}) unexpected error: {e}")
-                    tc_sparse[ch] = float("nan")
-            
-            # mcculw fallback
-            elif HAVE_MCCULW and self._etc_mcc_board is not None:
-                try:
-                    val = ul.t_in(self._etc_mcc_board, int(ch), MCCTempScale.CELSIUS)
-                    tc_sparse[ch] = float(val)
-                except Exception as e:
-                    print(f"[MCCBridge] MCC t_in ch{ch} ({tc_name}) unexpected error: {e}")
-                    tc_sparse[ch] = float("nan")
+        # Get TC configs from all boards
+        tc_configs = []
+        if self.cfg and self.cfg.boardsetc:
+            for board in self.cfg.boardsetc:
+                if board.enabled:
+                    tc_configs.extend(board.thermocouples)
         
-        return tc_sparse
+        # Read from ULDAQ boards
+        for board_num, dev, tdev in self._boards_etc_uldaq:
+            board_values = [float('nan')] * 8
+            try:
+                # Get which TCs are configured for this board
+                board_tcs = []
+                if self.cfg and self.cfg.boardsetc:
+                    for b in self.cfg.boardsetc:
+                        if b.boardNum == board_num and b.enabled:
+                            board_tcs = b.thermocouples
+                            break
+                
+                # Read each configured TC
+                configured_channels = {int(rec.ch): rec for rec in board_tcs}
+                for ch in range(8):
+                    if ch in configured_channels and configured_channels[ch].include:
+                        rec = configured_channels[ch]
+                        tc_type_str = rec.type.upper()
+                        tc_type_enum = getattr(TcType, tc_type_str, TcType.K)
+                        temp_val = tdev.t_in(ch, TempScale.CELSIUS, tc_type_enum)
+                        board_values[ch] = temp_val
+            except Exception as e:
+                print(f"[MCCBridge] E-TC #{board_num} ULDAQ read failed: {e}")
+            
+            all_values.extend(board_values)
+        
+        # Read from mcculw boards
+        for board_num in self._boards_etc_mcc:
+            board_values = [float('nan')] * 8
+            try:
+                # Get which TCs are configured for this board
+                board_tcs = []
+                if self.cfg and self.cfg.boardsetc:
+                    for b in self.cfg.boardsetc:
+                        if b.boardNum == board_num and b.enabled:
+                            board_tcs = b.thermocouples
+                            break
+                
+                # Read each configured TC
+                for rec in board_tcs:
+                    if rec.include:
+                        ch = int(rec.ch)
+                        if 0 <= ch < 8:
+                            try:
+                                temp_val = ul.t_in(board_num, ch, MCCTempScale.CELSIUS)
+                                board_values[ch] = temp_val
+                            except Exception:
+                                # Open circuit is common, leave as nan
+                                pass
+            except Exception as e:
+                print(f"[MCCBridge] E-TC #{board_num} mcculw read failed: {e}")
+            
+            all_values.extend(board_values)
+        
+        # Returns [board0_ch0-7, board1_ch0-7, ...]
+        return all_values
 
-    # ---------------- Digital Outputs (E-1608) ----------------
     def set_do(self, index: int, state: bool, active_high=True):
-        assert 0 <= index < 8
+        """Set DO channel - routes to correct board based on index"""
+        # Safety check
+        if self.cfg is None:
+            return
+        
+        # Calculate which board and channel
+        board_idx = index // 8  # Which board (0, 1, 2...)
+        channel = index % 8     # Which channel on that board (0-7)
+        
+        # Bounds check
+        if board_idx >= len(self._boards_1608):
+            print(f"[MCCBridge] DO{index}: board index {board_idx} out of range")
+            return
+        
+        board_num = self._boards_1608[board_idx]
+        
+        # Update mirror
+        if index < len(self._do_bits):
+            self._do_bits[index] = 1 if state else 0
+        if index < len(self._do_active_high):
+            self._do_active_high[index] = bool(active_high)
+        
+        # Write to hardware
         logical = bool(state)
         phys = 1 if (logical == bool(active_high)) else 0
-        self._do_bits[index] = 1 if logical else 0
+        
         if HAVE_MCCULW:
             try:
-                ul.d_bit_out(
-                    self.cfg.board1608.boardNum,
-                    DigitalPortType.AUXPORT,
-                    index,
-                    phys,
-                )
+                ul.d_bit_out(board_num, DigitalPortType.AUXPORT, channel, phys)
             except Exception as e:
-                print(f"[MCCBridge] DO ch{index} write failed: {e}")
+                print(f"[MCCBridge] DO{index} (board #{board_num}, ch{channel}) write failed: {e}")
 
-    # --- DO buzz: one cancellable task per channel; STOP always forces OFF ---
     async def start_buzz(self, index: int, hz: float, active_high: bool = True):
         self._do_active_high[index] = bool(active_high)
         await self.stop_buzz(index)  # cancel any prior
@@ -474,7 +456,7 @@ class MCCBridge:
         """Expose AO values for PID feedback"""
         return self._ao_vals
 
-    def _dac_counts(self, volts: float) -> int:
+    def _dac_counts(self, volts: float, board_num: int) -> int:
         """Convert volts to 16-bit DAC code for ±10 V range (BIP10V).
         Clamps to [-10.0, +10.0], returns integer in [0, 65535].
         """
@@ -489,11 +471,11 @@ class MCCBridge:
             v = +10.0
 
         # Preferred: library conversion (handles calibration)
-        if HAVE_MCCULW and (ul is not None) and self.cfg is not None:
+        if HAVE_MCCULW and ul is not None:
             try:
                 return int(
                     ul.from_eng_units(
-                        self.cfg.board1608.boardNum,
+                        board_num,
                         ULRange.BIP10VOLTS,
                         v,
                     )
@@ -510,28 +492,37 @@ class MCCBridge:
             code = 65535
         return code
 
-    def set_ao(self, index: int, volts: float):
-        assert 0 <= index < 2
-        # Store the requested voltage for UI echo
-        try:
-            self._ao_vals[index] = float(volts)
-        except Exception:
-            self._ao_vals[index] = 0.0
-
-        code = self._dac_counts(volts)  # ALWAYS int [0..65535]
-
-        if HAVE_MCCULW and (ul is not None) and self.cfg is not None:
+    def set_ao(self, index: int, voltage: float):
+        """Set AO channel - routes to correct board based on index"""
+        # Safety check
+        if self.cfg is None:
+            return
+        
+        # Calculate which board and channel
+        board_idx = index // 2  # Which board (each E-1608 has 2 AO)
+        channel = index % 2     # Which channel on that board (0 or 1)
+        
+        # Bounds check
+        if board_idx >= len(self._boards_1608):
+            print(f"[MCCBridge] AO{index}: board index {board_idx} out of range")
+            return
+        
+        board_num = self._boards_1608[board_idx]
+        voltage = float(voltage)
+        
+        # Update mirror
+        if index < len(self._ao_vals):
+            self._ao_vals[index] = voltage
+        
+        # Convert to DAC counts
+        code = self._dac_counts(voltage, board_num)
+        
+        # Write to hardware
+        if HAVE_MCCULW:
             try:
-                # IMPORTANT: Use BIP10VOLTS for E-1608 (AO is ±10 V)
-                ul.a_out(
-                    self.cfg.board1608.boardNum,
-                    index,
-                    ULRange.BIP10VOLTS,
-                    int(code),
-                )
+                ul.a_out(board_num, channel, ULRange.BIP10VOLTS, int(code))
             except Exception as e:
-                print(f"[MCCBridge] AO ch{index} write failed: {e}")
-        # If no hardware, snapshot already updated; nothing else to do.
+                print(f"[MCCBridge] AO{index} (board #{board_num}, ch{channel}) write failed: {e}")
 
     def get_ao_snapshot(self):
         return list(self._ao_vals)

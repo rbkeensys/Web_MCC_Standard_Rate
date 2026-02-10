@@ -1,0 +1,69 @@
+{
+  "pages": [
+    {
+      "id": "ae1a7e61-e556-43fe-a70f-5c9ef1c0569a",
+      "name": "Page 1",
+      "widgets": [
+        {
+          "id": "e15c7800-81af-4449-8b04-4be81ffe8c98",
+          "type": "gauge",
+          "x": 29,
+          "y": -6,
+          "w": 936,
+          "h": 580,
+          "opts": {
+            "title": "Gauge",
+            "needles": [
+              {
+                "kind": "ai",
+                "index": 8,
+                "name": "DP Flow 1",
+                "displayScale": 1,
+                "displayOffset": 0
+              }
+            ],
+            "scale": "manual",
+            "min": 0,
+            "max": 10,
+            "decimals": 4,
+            "divisions": 10,
+            "scaleOp": true
+          }
+        },
+        {
+          "id": "e920a3f4-bbe2-4918-8c41-cb564109b652",
+          "type": "chart",
+          "x": 69,
+          "y": 585,
+          "w": 1974,
+          "h": 584,
+          "opts": {
+            "title": "Chart",
+            "series": [
+              {
+                "kind": "ai",
+                "index": 8,
+                "name": "Scale",
+                "displayScale": 1,
+                "displayOffset": 0
+              }
+            ],
+            "span": 60,
+            "paused": false,
+            "scale": "manual",
+            "min": 0,
+            "max": 20,
+            "filterHz": 0,
+            "cursorMode": "follow",
+            "yGridLines": 10
+          },
+          "view": {
+            "span": 60,
+            "paused": false,
+            "tFreeze": 0
+          }
+        }
+      ]
+    }
+  ]
+}

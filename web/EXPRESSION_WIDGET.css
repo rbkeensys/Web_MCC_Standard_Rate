@@ -1,0 +1,244 @@
+/* ============================================================================
+   EXPRESSION WIDGET STYLES - Add to styles.css
+   ============================================================================ */
+
+/* Expression widget sizing */
+.widget.expr-widget {
+  min-width: 280px;
+  min-height: 120px;
+}
+
+.widget.expr-widget .body {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-y: auto;
+}
+
+/* Error and disabled states */
+.expr-error {
+  padding: 12px;
+  background: rgba(216, 74, 74, 0.1);
+  border: 1px solid rgba(216, 74, 74, 0.3);
+  border-radius: 6px;
+  color: #f0caca;
+}
+
+.expr-disabled {
+  padding: 12px;
+  color: #9094a1;
+  font-style: italic;
+  text-align: center;
+}
+
+/* Simple variable display */
+.expr-vars {
+  padding: 8px;
+}
+
+.expr-var-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.expr-var-row:last-child {
+  border-bottom: none;
+}
+
+.expr-var-name {
+  color: #79c0ff;
+  font-weight: 600;
+  min-width: 100px;
+}
+
+.expr-var-eq {
+  color: #9094a1;
+}
+
+.expr-var-value {
+  color: #a8f0a8;
+  font-weight: 600;
+  margin-left: auto;
+}
+
+/* Annotated source code display */
+.expr-source-annotated {
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.expr-line {
+  padding: 3px 6px;
+  border-radius: 3px;
+  margin: 2px 0;
+  transition: background 0.2s;
+}
+
+.expr-line:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.expr-comment {
+  color: #6e7681;
+  font-style: italic;
+}
+
+.expr-assignment {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.expr-static {
+  color: #ff9966;
+  font-weight: 600;
+}
+
+.expr-eq {
+  color: #9094a1;
+}
+
+.expr-expr {
+  color: #e6e6e6;
+  flex: 1;
+  min-width: 100px;
+}
+
+.expr-arrow {
+  color: #9094a1;
+  font-weight: bold;
+}
+
+.expr-value {
+  color: #a8f0a8;
+  font-weight: 700;
+  background: rgba(47, 170, 96, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+
+/* Hardware writes section */
+.expr-hw-writes {
+  padding: 8px;
+  margin-top: 8px;
+  background: rgba(121, 192, 255, 0.05);
+  border-left: 3px solid #79c0ff;
+  border-radius: 4px;
+}
+
+.expr-section-label {
+  font-size: 10px;
+  color: #79c0ff;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.expr-hw-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  margin: 3px 0;
+}
+
+.expr-hw-type {
+  color: #ff9966;
+  font-weight: 700;
+  font-size: 11px;
+  min-width: 25px;
+}
+
+.expr-hw-ch {
+  color: #9094a1;
+  font-size: 10px;
+}
+
+.expr-hw-eq {
+  color: #79c0ff;
+  font-weight: bold;
+}
+
+.expr-hw-value {
+  color: #a8f0a8;
+  font-weight: 700;
+  margin-left: auto;
+}
+
+/* Output display */
+.expr-output {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(121, 192, 255, 0.08);
+  border-radius: 6px;
+  border: 1px solid rgba(121, 192, 255, 0.2);
+  margin-top: 8px;
+}
+
+.expr-output-label {
+  color: #79c0ff;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.expr-output-value {
+  color: #a8f0a8;
+  font-weight: 700;
+  font-size: 16px;
+  margin-left: auto;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* Compact mode for smaller widgets */
+.widget.expr-widget.compact .expr-line {
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+.widget.expr-widget.compact .expr-output {
+  padding: 6px 8px;
+}
+
+.widget.expr-widget.compact .expr-output-value {
+  font-size: 14px;
+}
+
+/* Animation for value changes */
+@keyframes value-flash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.expr-value.changed,
+.expr-output-value.changed {
+  animation: value-flash 0.3s ease-in-out;
+}
+
+/* Responsive sizing */
+@media (max-width: 768px) {
+  .widget.expr-widget {
+    min-width: 240px;
+  }
+  
+  .expr-assignment {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .expr-value {
+    margin-left: 0;
+    margin-top: 4px;
+  }
+}
