@@ -2,7 +2,7 @@
 Version: 1.0.0
 Updated: 2026-01-14 23:30:56
 """
-__version__ = "5.26.1"  # Added /api/rates endpoint to get current rates for frontend display
+__version__ = "5.28.3"  # Keep min buffer (1000 samples) for pre-trigger, don't drain buffer completely
 __updated__ = "2026-01-14 23:30:56"
 
 
@@ -27,6 +27,7 @@ from mcc_bridge import BRIDGE_VERSION, HAVE_MCCULW, HAVE_ULDAQ
 from pid_core import PIDManager
 from filters import OnePoleLPFBank
 from logger import SessionLogger
+from acq_scope import ScopeProcessor  # Scope mode acquisition & trigger detection
 from app_models import (
     AppConfig, get_all_analogs, get_all_digital_outputs,
     get_all_analog_outputs, get_all_thermocouples,
@@ -269,8 +270,25 @@ def _load_json_model(path: Path, model_cls: Type[BaseModel]):
         return model_cls.model_validate({})
 
 # Global rate variables (will be loaded from config below)
-acq_rate_hz: float = 100.0  # Default acquisition rate
+acq_rate_hz: float = 100.0  # Effective acquisition rate (for roll mode / general use)
+hw_sample_rate_hz: float = 100.0  # Hardware sampling rate (for scope mode burst)
 TARGET_UI_HZ: float = 25.0  # Default display update rate
+
+# Scope mode trigger state
+scope_trigger_state = {
+    'enabled': False,
+    'mode': 'auto',  # 'auto', 'normal', 'single'
+    'source_index': 0,  # Which AI channel to trigger on
+    'level': 0.0,
+    'edge': 'rising',  # 'rising' or 'falling'
+    'position': 50,  # 0-100% where trigger appears on display
+    'armed': True,
+    'last_trigger_time': 0.0,
+    'max_update_rate_hz': 200.0,  # Max display updates in auto mode
+}
+
+# Scope processor instance (will be initialized in acq_loop)
+scope_processor: Optional[ScopeProcessor] = None
 
 app_cfg = _load_json_model(CFG_PATH, AppConfig)
 app_cfg = migrate_config_to_board_centric(app_cfg)  # Auto-migrate old configs
@@ -280,7 +298,9 @@ if app_cfg.boards1608:
     for board in app_cfg.boards1608:
         if board.enabled:
             acq_rate_hz = max(1.0, board.sampleRateHz)
+            hw_sample_rate_hz = acq_rate_hz  # Default to same
             print(f"[MCC-Hub] Loaded acquisition rate from config: {acq_rate_hz} Hz")
+            print(f"[MCC-Hub] Hardware sample rate: {hw_sample_rate_hz} Hz")
             break
 
 # Load display rate from config
@@ -583,6 +603,48 @@ async def broadcast(msg: dict):
 
 # ========== BURST MODE GLOBALS ==========
 sample_buffer = deque(maxlen=2000)  # Larger buffer to reduce lock contention
+processed_scope_buffer = deque(maxlen=20000)  # Processed samples for scope trigger detection (larger for pre-trigger)
+
+def detect_scope_trigger(buffer, trigger_state):
+    """
+    Search buffer for trigger event
+    
+    Returns: (triggered, trigger_index) where trigger_index is position in buffer
+    """
+    if not trigger_state['armed'] or len(buffer) < 10:
+        return False, -1
+    
+    source_idx = trigger_state['source_index']
+    level = trigger_state['level']
+    edge = trigger_state['edge']
+    
+    # Search backward through buffer (newest first)
+    for i in range(len(buffer) - 1, 0, -1):
+        try:
+            cur_sample = buffer[i]
+            prev_sample = buffer[i - 1]
+            
+            if 'ai' not in cur_sample or 'ai' not in prev_sample:
+                continue
+            
+            if source_idx >= len(cur_sample['ai']) or source_idx >= len(prev_sample['ai']):
+                continue
+            
+            cur_val = cur_sample['ai'][source_idx]
+            prev_val = prev_sample['ai'][source_idx]
+            
+            # Check trigger condition
+            if edge == 'rising':
+                if prev_val < level and cur_val >= level:
+                    return True, i
+            else:  # falling
+                if prev_val > level and cur_val <= level:
+                    return True, i
+                    
+        except (KeyError, IndexError):
+            continue
+    
+    return False, -1
 buffer_lock = Lock()
 burst_rate_hz = 1000  # Hardware burst acquisition rate
 burst_running = Event()  # Signal to stop acquisition thread
@@ -605,7 +667,7 @@ def burst_acquisition_thread():
     
     ONLY acquires from boards with AI channels configured (skips DO-only boards)
     """
-    global sample_buffer, burst_running, acq_rate_hz, TARGET_UI_HZ
+    global sample_buffer, burst_running, acq_rate_hz, hw_sample_rate_hz, TARGET_UI_HZ
     
     print("[BURST] Acquisition thread starting")
     
@@ -622,15 +684,20 @@ def burst_acquisition_thread():
     try:
         while burst_running.is_set():
             try:
-                # Calculate block size based on ACQUISITION rate, not display rate
-                # Use 1/10th of acquisition rate (100ms of data) OR minimum 20 samples
-                # This keeps hardware lock time reasonable while allowing high sample rates
-                block_size = max(20, int(acq_rate_hz / 10))
+                # Use hw_sample_rate_hz for actual hardware sampling
+                # Calculate block size: aim for ~100-200ms of data
+                # At 10kHz: 1000-2000 samples
+                # At 100kHz: 10000-20000 samples
+                # Min 20 samples for low rates
+                target_block_time = 0.1  # 100ms blocks
+                block_size = max(20, int(hw_sample_rate_hz * target_block_time))
                 
                 if burst_count == 0:
-                    print(f"[BURST] Block size: {block_size} samples ({block_size/acq_rate_hz*1000:.1f}ms lock time) for {acq_rate_hz} Hz acquisition")
+                    actual_burst_rate = 1.0 / target_block_time
+                    print(f"[BURST] Block size: {block_size} samples ({target_block_time*1000:.0f}ms each) for {hw_sample_rate_hz} Hz hardware rate")
+                    print(f"[BURST] Burst rate: {actual_burst_rate:.1f} bursts/sec")
                 
-                burst_interval = block_size / max(1.0, acq_rate_hz)  # seconds between bursts
+                burst_interval = block_size / max(1.0, hw_sample_rate_hz)  # seconds between bursts
                 
                 # Wait until it's time for next burst
                 now = time.perf_counter()
@@ -648,10 +715,10 @@ def burst_acquisition_thread():
                 # Read burst from hardware (ONLY from AI boards, skip DO-only boards)
                 try:
                     # Try passing samples parameter if supported
-                    burst_samples = mcc.read_ai_all_burst(rate_hz=int(acq_rate_hz), samples=block_size, board_filter=ai_boards)
+                    burst_samples = mcc.read_ai_all_burst(rate_hz=int(hw_sample_rate_hz), samples=block_size, board_filter=ai_boards)
                 except TypeError:
                     # Fallback if params not supported
-                    burst_samples = mcc.read_ai_all_burst(rate_hz=int(acq_rate_hz))
+                    burst_samples = mcc.read_ai_all_burst(rate_hz=int(hw_sample_rate_hz))
                 
                 # Add all samples to ring buffer (thread-safe)
                 with buffer_lock:
@@ -664,11 +731,12 @@ def burst_acquisition_thread():
                 now = time.perf_counter()
                 if now - last_stats > 5.0:
                     elapsed = now - last_stats
-                    samples_acquired = burst_count * len(burst_samples)
-                    rate = samples_acquired / elapsed
+                    samples_acquired = burst_count * block_size  # Use current block_size
+                    actual_sample_rate = samples_acquired / elapsed
                     buffer_size = len(sample_buffer)
                     
-                    print(f"[BURST] Acq rate: {rate:.1f} Hz (target: {acq_rate_hz} Hz) | Buffer: {buffer_size} samples | Errors: {error_count}")
+                    efficiency = (actual_sample_rate / hw_sample_rate_hz * 100) if hw_sample_rate_hz > 0 else 0
+                    print(f"[BURST] Sample rate: {actual_sample_rate:.1f} Hz ({efficiency:.0f}% of target {hw_sample_rate_hz} Hz) | Buffer: {buffer_size} | Bursts: {burst_count} | Errors: {error_count}")
                     
                     burst_count = 0
                     error_count = 0
@@ -732,6 +800,11 @@ async def acq_loop():
     session_logger = SessionLogger(session_dir)
     await broadcast({"type": "session", "dir": session_dir.name})
     print(f"[MCC-Hub] Logging to {session_dir}")
+    
+    # Initialize scope processor
+    global scope_processor
+    scope_processor = ScopeProcessor(broadcast_func=broadcast)
+    print("[MCC-Hub] Scope processor initialized")
 
     # Start hardware
     try:
@@ -779,30 +852,41 @@ async def acq_loop():
     try:
         # === TIMER-DRIVEN PROCESSING ===
         # Main loop runs at display rate (TARGET_UI_HZ)
-        # Each iteration processes multiple samples
-        print(f"[MCC-Hub] Timer mode: Display {TARGET_UI_HZ} Hz, Sample {acq_rate_hz} Hz")
+        # Each iteration processes ALL available samples (event-driven, not timer-driven)
+        print(f"[MCC-Hub] Event-driven mode: Processing samples as fast as they arrive")
+        print(f"[MCC-Hub] Hardware: {hw_sample_rate_hz} Hz | Display updates: max {TARGET_UI_HZ} Hz")
         
         while True:
-            # Sleep until next display update
-            await asyncio.sleep(1.0 / TARGET_UI_HZ)
+            # Short sleep to yield CPU, but process as fast as possible
+            await asyncio.sleep(0.001)  # 1ms sleep between cycles
             
             display_start = time.perf_counter()
-            
-            # Calculate expected samples for this cycle
-            expected_samples = int(acq_rate_hz / TARGET_UI_HZ)
             
             # Check how many samples are available
             with buffer_lock:
                 available_samples = len(sample_buffer)
             
+            # Skip if buffer empty
+            if available_samples == 0:
+                continue
+            
             # Skip if buffer too small (startup warmup)
-            if ticks < 10 and available_samples < 10:
+            if ticks < 10 and available_samples < 100:
                 if ticks % 5 == 0:
                     print(f"[STARTUP] Waiting for buffer to fill... ({available_samples} samples)")
                 continue
             
-            # Process min(expected, available) to avoid draining or underrunning
-            samples_to_grab = min(expected_samples, available_samples) if available_samples > 0 else 0
+            # CRITICAL: Keep enough samples for pre-trigger!
+            # In scope mode, we need to maintain a buffer for pre-trigger samples
+            # Leave at least 2x the expected samples needed for a full sweep
+            min_buffer_retain = 1000  # Keep at least 1000 samples for pre-trigger
+            
+            if available_samples <= min_buffer_retain:
+                # Buffer too small - don't process yet
+                continue
+            
+            # Process samples but leave min_buffer_retain in buffer
+            samples_to_grab = available_samples - min_buffer_retain
             
             if samples_to_grab == 0:
                 # Buffer empty - skip this cycle
@@ -1212,20 +1296,26 @@ async def acq_loop():
             
             # --- Send batch after processing all samples ---
             if frames_this_cycle:
+                # ROLL MODE: Send batch to frontend for charts
                 batch_msg = {
                     "type": "batch",
                     "samples": frames_this_cycle,
                     "count": len(frames_this_cycle),
-                    "acq_rate": acq_rate_hz  # Tell frontend actual sample rate for proper timestamps
+                    "acq_rate": acq_rate_hz,  # Processing rate (roll mode)
+                    "hw_sample_rate": hw_sample_rate_hz  # Hardware sampling rate (scope mode)
                 }
                 asyncio.create_task(broadcast(batch_msg))  # Fire and forget!
                 
-                # Always print at low display rates for visibility
-                if TARGET_UI_HZ <= 5.0 or ticks % 100 == 0:
+                # SCOPE MODE: Feed to scope processor for trigger detection
+                if scope_processor and scope_processor.trigger_state.enabled:
+                    scope_processor.process_samples(frames_this_cycle, hw_sample_rate_hz)
+                
+                # Log processing stats
+                if len(frames_this_cycle) >= 100 or ticks % 50 == 0:
                     with buffer_lock:
                         buf_size = len(sample_buffer)
                     cycle_time = (time.perf_counter() - display_start) * 1000
-                    print(f"[TIMER@{TARGET_UI_HZ}Hz] Processed {len(frames_this_cycle)} samples in {cycle_time:.1f}ms | Buffer: {buf_size}")
+                    print(f"[PROCESS] Processed {len(frames_this_cycle)} samples in {cycle_time:.1f}ms | Buffer: {buf_size}")
 
             # Debug for first few ticks (moved inside sample loop above)
             if ticks <= MCC_DUMP_FIRST:
@@ -1577,6 +1667,42 @@ def set_rate(req: RateReq):
 
     return {"ok": True, "rate": acq_rate_hz}
 
+@app.post("/api/acq/hw_rate")
+def set_hw_rate(req: RateReq):
+    global hw_sample_rate_hz
+    requested_rate = max(1.0, min(500000.0, float(req.hz)))
+    
+    # E-1608 spec: 250 kS/s maximum
+    if requested_rate > 250000:
+        print(f"[MCC-Hub] WARNING: HW rate {requested_rate} Hz exceeds E-1608 spec (250 kHz)")
+        print(f"[MCC-Hub] Hardware will run at maximum achievable rate")
+    
+    hw_sample_rate_hz = requested_rate
+    print(f"[MCC-Hub] Hardware sample rate set to {hw_sample_rate_hz} Hz")
+    return {"ok": True, "rate": hw_sample_rate_hz}
+
+@app.post("/api/scope/trigger")
+def set_scope_trigger(data: dict):
+    """Configure scope trigger settings"""
+    global scope_processor
+    
+    if scope_processor is None:
+        return {"ok": False, "error": "Scope processor not initialized"}
+    
+    # Update scope processor configuration
+    scope_processor.configure_trigger(**data, hw_sample_rate=hw_sample_rate_hz)
+    
+    print(f"[SCOPE] Trigger configured via API: mode={data.get('mode')}, "
+          f"level={data.get('level')}, edge={data.get('edge')}")
+    
+    return {"ok": True, "state": {
+        'mode': scope_processor.trigger_state.mode,
+        'level': scope_processor.trigger_state.level,
+        'edge': scope_processor.trigger_state.edge,
+        'position': scope_processor.trigger_state.position,
+        'armed': scope_processor.trigger_state.armed
+    }}
+
 @app.post("/api/display/rate")
 def set_display_rate(req: RateReq):
     global TARGET_UI_HZ, app_cfg
@@ -1597,6 +1723,7 @@ def get_rates():
     """Get current acquisition and display rates"""
     return {
         "acq_rate": acq_rate_hz,
+        "hw_sample_rate": hw_sample_rate_hz,
         "display_rate": TARGET_UI_HZ
     }
 

@@ -1,4 +1,4 @@
-const UI_VERSION = "1.8.1";  // Fixed: Now loads BOTH acq and display rates on startup
+const UI_VERSION = "1.16.5";  // Fixed trigger source dropdown to show all AI channels (not just graphed series)
 
 /* ----------------------------- helpers ---------------------------------- */
 const $ = sel => document.querySelector(sel);
@@ -902,7 +902,10 @@ async function loadCurrentRates() {
       displayInput.value = data.display_rate;
     }
     
-    console.log(`[INIT] Loaded rates: Acq=${data.acq_rate} Hz, Display=${data.display_rate} Hz`);
+    // Store hw_sample_rate globally for charts
+    window.HW_SAMPLE_RATE = data.hw_sample_rate || data.acq_rate;
+    
+    console.log(`[INIT] Loaded rates: Acq=${data.acq_rate} Hz, HW=${window.HW_SAMPLE_RATE} Hz, Display=${data.display_rate} Hz`);
   } catch (e) {
     console.error('Failed to load current rates:', e);
   }
@@ -1052,10 +1055,53 @@ function connect(){
     const msg=JSON.parse(ev.data);
     if(msg.type==='session'){ sessionDir=msg.dir; $('#session').textContent=sessionDir; }
     if (msg.type === 'tick') feedTick(msg);
+    
+    // SCOPE MODE: Handle triggered sweeps from backend
+    if (msg.type === 'scope_sweep' && msg.samples && msg.samples.length > 0) {
+      console.log(`[SCOPE] Received sweep: ${msg.samples.length} samples, triggered=${msg.triggered}, mode=${msg.mode}`);
+      
+      // Find scope-mode charts and update their buffers
+      state.pages.forEach(p => {
+        p.widgets.forEach(w => {
+          if (w.type === 'chart' && w.opts.displayMode === 'scope') {
+            const series = w.opts.series || [];
+            
+            // Transform samples to chart format: {t, v: [values]}
+            const transformedSamples = msg.samples.map(sample => {
+              const values = series.map(sel => {
+                switch(sel.kind) {
+                  case 'ai': return sample.ai?.[sel.index] ?? 0;
+                  case 'ao': return sample.ao?.[sel.index] ?? 0;
+                  case 'do': return sample.do?.[sel.index] ?? 0;
+                  case 'tc': return sample.tc?.[sel.index] ?? 0;
+                  case 'pid': return sample.pid?.[sel.index]?.out ?? 0;
+                  case 'math': return sample.math?.[sel.index]?.output ?? 0;
+                  case 'expr': return sample.expr?.[sel.index]?.output ?? 0;
+                  case 'button': return state.buttonVars?.[sel.index] ?? 0;
+                  default: return 0;
+                }
+              });
+              return {t: sample.t, v: values};
+            });
+            
+            // Replace buffer with transformed sweep
+            chartBuffers.set(w.id, transformedSamples);
+            
+            // Store trigger info
+            w._scopeSweepTriggered = msg.triggered;
+            w._scopeTriggerIndex = msg.trigger_index;
+          }
+        });
+      });
+      
+      // Charts will auto-render on next animation frame
+      return;
+    }
+    
+    // ROLL MODE: Handle batch updates
     if (msg.type === 'batch' && msg.samples && msg.samples.length > 0) {
       // Efficiently process batch: add all samples to chart buffers, then render once
       const samples = msg.samples;
-      console.log(`[BATCH] Received ${samples.length} samples, adding to charts...`);
       
       // Debug: Check if DO values are changing
       const doValues = samples.map(s => s.do?.[0]).filter(v => v !== undefined);
@@ -1085,6 +1131,13 @@ function connect(){
         for (const w of p.widgets) {
           if (w.type !== 'chart') continue;
           
+          // SKIP batch updates for scope-mode charts (they only use scope_sweep messages)
+          if (w.opts.displayMode === 'scope') continue;
+          
+          // Store acq rate for scope mode calculations
+          w._acqRate = acqRate;
+          w._hwSampleRate = msg.hw_sample_rate || acqRate;  // Use hw_sample_rate if available
+          
           const buf = chartBuffers.get(w.id) || [];
           const series = w.opts.series || [];
           
@@ -1111,8 +1164,18 @@ function connect(){
           
           // Trim old data (but not when paused!)
           if (!w.opts.paused) {
-            const chartSpan = Math.max(1, w.opts.span || 10);
-            const bufferDepth = chartSpan * 1.2;
+            // In scope mode, need enough buffer for pre-trigger samples (2x display window)
+            // In roll mode, use configured span
+            let bufferDepth;
+            if (w.opts.displayMode === 'scope') {
+              const timePerDiv = w.opts.timePerDiv || 1.0;
+              const totalTime = timePerDiv * 10; // 10 divisions
+              bufferDepth = totalTime * 2; // Keep 2x display window for pre-trigger
+            } else {
+              const chartSpan = Math.max(1, w.opts.span || 10);
+              bufferDepth = chartSpan * 1.2;
+            }
+            
             while (buf.length && (t0 - buf[0].t) > bufferDepth) {
               buf.shift();
             }
@@ -1121,8 +1184,6 @@ function connect(){
           chartBuffers.set(w.id, buf);
         }
       }
-      
-      console.log(`[BATCH] Added ${samples.length} samples to ${state.pages.flatMap(p => p.widgets.filter(w => w.type === 'chart')).length} charts`);
       
       // Trigger single render update for widgets/buttons
       updateDOButtons();
@@ -1573,7 +1634,26 @@ async function addExprWidget() {
 // Update defaultsFor to give charts reasonable initial spans:
 function defaultsFor(type){
   switch(type){
-    case 'chart':    return { title:'Chart', series:[], span:60, paused:false, scale:'auto', min:0, max:10, filterHz:0, cursorMode:'follow' };
+    case 'chart':    return { 
+      title:'Chart', 
+      series:[], 
+      span:60, 
+      paused:false, 
+      scale:'auto', 
+      min:0, 
+      max:10, 
+      filterHz:0, 
+      cursorMode:'follow',
+      // Scope mode settings
+      displayMode: 'roll',           // 'roll' or 'scope'
+      timePerDiv: 1.0,               // seconds per division (for scope mode)
+      triggerSourceIndex: 0,         // which series to trigger on (index into series array)
+      triggerLevel: 0.5,             // trigger threshold
+      triggerEdge: 'rising',         // 'rising' or 'falling'
+      triggerMode: 'auto',           // 'auto', 'normal', 'single'
+      triggerPosition: 50,           // 0-100%, where trigger appears on screen
+      showTriggerLine: true          // show red trigger level line
+    };
     case 'gauge':    return { title:'Gauge', needles:[], scale:'manual', min:0, max:10 };
     case 'bars':     return { title:'Bars', series:[], scale:'manual', min:0, max:10 };
     case 'dobutton': return { title:'Button', outputType:'do', doIndex:0, varName:'button1', activeHigh:true, mode:'toggle', buzzHz:10, actuationTime:0, _timer:null };
@@ -1939,6 +2019,172 @@ function openWidgetSettings(w) {
           ['Scale Operation Mode (enables Tare button)', scaleOpChk],
           ['Number of Divisions (tick marks)', inputNum(w.opts, 'divisions', 1)]
         ])
+      );
+    }
+    
+    // Add oscilloscope controls for charts
+    if (w.type === 'chart') {
+      // Display mode selector
+      const displayModeSelect = selectEnum(['roll', 'scope'], w.opts.displayMode || 'roll', v => {
+        w.opts.displayMode = v;
+        updateScopeControlsVisibility();
+        
+        // Sync to backend
+        if (v === 'scope' && w._enableScopeMode) {
+          w._enableScopeMode();
+        } else if (w._disableScopeMode) {
+          w._disableScopeMode();
+        }
+      });
+      
+      // Time/Division selector (for scope mode)
+      const timePerDivOptions = [
+        ['1 µs', 0.000001],
+        ['10 µs', 0.00001],
+        ['100 µs', 0.0001],
+        ['1 ms', 0.001],
+        ['10 ms', 0.01],
+        ['100 ms', 0.1],
+        ['1 s', 1.0],
+        ['10 s', 10.0]
+      ];
+      const timePerDivSelect = el('select', {});
+      timePerDivOptions.forEach(([label, val]) => {
+        timePerDivSelect.append(el('option', {value: val}, label));
+      });
+      timePerDivSelect.value = w.opts.timePerDiv || 1.0;
+      timePerDivSelect.onchange = () => {
+        w.opts.timePerDiv = parseFloat(timePerDivSelect.value);
+      };
+      
+      // Trigger controls
+      const triggerEnabledChk = inputChk(w.opts, 'triggerEnabled');
+      triggerEnabledChk.onchange = () => {
+        w.opts.triggerEnabled = triggerEnabledChk.checked;
+        updateScopeControlsVisibility();
+      };
+      
+      // Trigger source selector
+      const triggerSourceSelect = selectEnum(['ai', 'do', 'tc', 'math', 'expr'], w.opts.triggerSource || 'ai', v => {
+        w.opts.triggerSource = v;
+      });
+      
+      const triggerChannelInput = inputNum(w.opts, 'triggerChannel', 1);
+      const triggerLevelInput = inputNum(w.opts, 'triggerLevel', 0.01);
+      
+      // Trigger edge selector
+      const triggerEdgeSelect = selectEnum(['rising', 'falling'], w.opts.triggerEdge || 'rising', v => {
+        w.opts.triggerEdge = v;
+      });
+      
+      // Trigger mode selector
+      const triggerModeSelect = selectEnum(['auto', 'normal', 'single'], w.opts.triggerMode || 'auto', v => {
+        w.opts.triggerMode = v;
+        updateScopeControlsVisibility();
+      });
+      
+      // Trigger position slider (0-100%)
+      const triggerPositionInput = el('input', {
+        type: 'range',
+        min: 0,
+        max: 100,
+        step: 1,
+        value: w.opts.triggerPosition || 50,
+        style: 'width: 150px'
+      });
+      const triggerPositionLabel = el('span', {}, `${w.opts.triggerPosition || 50}%`);
+      triggerPositionInput.oninput = () => {
+        w.opts.triggerPosition = parseInt(triggerPositionInput.value);
+        triggerPositionLabel.textContent = `${w.opts.triggerPosition}%`;
+      };
+      
+      // ARM button for single mode
+      const armButton = el('button', {
+        className: 'btn',
+        onclick: () => {
+          w.opts.triggerArmed = true;
+          console.log('[SCOPE] Armed for single trigger');
+        }
+      }, 'ARM');
+      
+      // Show trigger line checkbox
+      const showTriggerLineChk = inputChk(w.opts, 'showTriggerLine');
+      
+      // Container for scope controls (visibility controlled)
+      const scopeControls = el('div', {id: `scope-controls-${w.id}`});
+      
+      const updateScopeControlsVisibility = () => {
+        const isScope = w.opts.displayMode === 'scope';
+        const triggerEnabled = w.opts.triggerEnabled;
+        const isSingle = w.opts.triggerMode === 'single';
+        
+        const rows = [];
+        
+        // Always show display mode
+        rows.push(['Display Mode', displayModeSelect]);
+        
+        if (isScope) {
+          rows.push(['Time/Division', timePerDivSelect]);
+          rows.push(['Enable Trigger', triggerEnabledChk]);
+          
+          if (triggerEnabled) {
+            rows.push(['Trigger Source', triggerSourceSelect]);
+            rows.push(['Trigger Channel', triggerChannelInput]);
+            rows.push(['Trigger Level', triggerLevelInput]);
+            rows.push(['Trigger Edge', triggerEdgeSelect]);
+            rows.push(['Trigger Mode', triggerModeSelect]);
+            rows.push(['Trigger Position', el('div', {style: 'display:flex;gap:8px;align-items:center'}, [triggerPositionInput, triggerPositionLabel])]);
+            rows.push(['Show Trigger Line', showTriggerLineChk]);
+            
+            if (isSingle) {
+              rows.push(['ARM (Single Mode)', armButton]);
+            }
+          }
+        } else {
+          // Roll mode - show span control
+          rows.push(['Span (seconds)', inputNum(w.opts, 'span', 1)]);
+          rows.push(['Filter Hz (0=off)', inputNum(w.opts, 'filterHz', 1)]);
+        }
+        
+        scopeControls.innerHTML = '';
+        scopeControls.append(tableForm(rows));
+      };
+      
+      updateScopeControlsVisibility();
+      
+      root.append(
+        el('hr', {className: 'soft', style: 'margin:16px 0'}),
+        el('h4', {}, 'Display Settings'),
+        scopeControls
+      );
+      
+      // Y-axis scale controls (always shown)
+      const scaleSelect = selectEnum(['auto', 'manual'], w.opts.scale || 'auto', v => {
+        w.opts.scale = v;
+        updateYAxisVisibility();
+      });
+      
+      const yAxisControls = el('div', {id: `yaxis-controls-${w.id}`});
+      
+      const updateYAxisVisibility = () => {
+        const isManual = w.opts.scale === 'manual';
+        const rows = [['Y-Axis Scale', scaleSelect]];
+        
+        if (isManual) {
+          rows.push(['Y Min', inputNum(w.opts, 'min', 0.1)]);
+          rows.push(['Y Max', inputNum(w.opts, 'max', 0.1)]);
+          rows.push(['Y Grid Divisions', inputNum(w.opts, 'divisions', 1)]);
+        }
+        
+        yAxisControls.innerHTML = '';
+        yAxisControls.append(tableForm(rows));
+      };
+      
+      updateYAxisVisibility();
+      
+      root.append(
+        el('hr', {className: 'soft', style: 'margin:16px 0'}),
+        yAxisControls
       );
     }
   }
@@ -2357,12 +2603,376 @@ const chartRAFHandles=new Map(); // w.id -> {rafId: number, isRunning: boolean}
 
 function mountChart(w, body){
   const legend=el('div',{className:'legend'}); body.append(legend);
-  const canvas=el('canvas'); body.append(canvas);
+  
+  // Add scope control panel (vertical on right side, below header)
+  const scopePanel = el('div', {
+    className: 'scope-controls',
+    style: `
+      display:none; 
+      position:absolute; 
+      top:40px;
+      right:0; 
+      width:180px;
+      bottom:30px;
+      background:rgba(20,24,38,0.95); 
+      padding:12px; 
+      border-left:2px solid #3b425e;
+      font-size:11px; 
+      overflow-y:auto;
+      z-index:5;
+      pointer-events:auto;
+    `
+  });
+  body.append(scopePanel);
+  
+  const canvas=el('canvas'); 
+  body.append(canvas);
   const ctx=canvas.getContext('2d');
+  
+  // Backend scope mode communication
+  async function enableScopeMode(widget) {
+    console.log('[SCOPE-FRONTEND] Enabling scope mode, sending config to backend...');
+    try {
+      const config = {
+        enabled: true,
+        mode: widget.opts.triggerMode || 'auto',
+        source_index: widget.opts.triggerSourceIndex || 0,
+        level: widget.opts.triggerLevel || 0.0,
+        edge: widget.opts.triggerEdge || 'rising',
+        position: widget.opts.triggerPosition || 50,
+        time_per_div: widget.opts.timePerDiv || 0.001
+      };
+      console.log('[SCOPE-FRONTEND] Config:', config);
+      
+      const response = await fetch('/api/scope/trigger', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(config)
+      });
+      const data = await response.json();
+      console.log('[SCOPE-FRONTEND] Backend response:', data);
+    } catch (e) {
+      console.error('[SCOPE-FRONTEND] Failed to enable backend scope mode:', e);
+    }
+  }
+  
+  async function disableScopeMode() {
+    try {
+      await fetch('/api/scope/trigger', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ enabled: false })
+      });
+      console.log('[SCOPE] Backend scope mode disabled');
+    } catch (e) {
+      console.error('[SCOPE] Failed to disable backend scope mode:', e);
+    }
+  }
+  
+  // Store functions on widget so settings modal can access them
+  w._enableScopeMode = () => enableScopeMode(w);
+  w._disableScopeMode = disableScopeMode;
+  w._syncTriggerSettings = () => syncTriggerSettings(w);
+  
+  // If already in scope mode, enable it now
+  if (w.opts.displayMode === 'scope') {
+    enableScopeMode(w);
+  }
+  
+  // Sync trigger settings to backend
+  async function syncTriggerSettings(widget) {
+    if (widget.opts.displayMode !== 'scope') return;
+    
+    try {
+      await fetch('/api/scope/trigger', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          enabled: true,
+          mode: widget.opts.triggerMode || 'auto',
+          source_index: widget.opts.triggerSourceIndex || 0,
+          level: widget.opts.triggerLevel || 0.0,
+          edge: widget.opts.triggerEdge || 'rising',
+          position: widget.opts.triggerPosition || 50,
+          time_per_div: widget.opts.timePerDiv || 0.001,
+          armed: widget.opts.triggerMode === 'single' ? widget.scopeState.waitingForTrigger : true
+        })
+      });
+    } catch (e) {
+      console.error('[SCOPE] Failed to sync trigger settings:', e);
+    }
+  }
+  
+  // Function to update scope controls visibility and content
+  function updateScopeControls() {
+    const isScope = w.opts.displayMode === 'scope';
+    scopePanel.style.display = isScope ? 'block' : 'none';
+    
+    if (!isScope) return;
+    
+    // Build scope control interface
+    scopePanel.innerHTML = '';
+    
+    const sectionStyle = 'margin-bottom:12px; padding-bottom:8px; border-bottom:2px solid #3b425e;';
+    const labelStyle = 'display:block; margin-bottom:4px; color:#9ca3b8; font-size:10px;';
+    const headerStyle = 'font-weight:bold; color:#7a8199; margin-bottom:8px; font-size:12px; text-transform:uppercase;';
+    
+    // === SOURCE SECTION ===
+    const sourceSection = el('div', {style: sectionStyle});
+    sourceSection.append(el('div', {style: headerStyle}, '📡 SOURCE'));
+    
+    // Get ALL available AI channels for trigger source (not just graphed series)
+    const signalOptions = [];
+    
+    // Add all AI channels from state
+    if (state.ai && state.ai.length > 0) {
+      state.ai.forEach((val, idx) => {
+        // Try to get custom name from config
+        let customName = '';
+        try {
+          // This will be populated from backend config
+          customName = state.ai_names?.[idx] || '';
+        } catch (e) {}
+        
+        const label = customName 
+          ? `AI${idx}: ${customName}`
+          : `AI${idx}`;
+        
+        signalOptions.push([label, idx]);
+      });
+    }
+    
+    if (signalOptions.length === 0) {
+      // Fallback: assume 8 channels
+      for (let i = 0; i < 8; i++) {
+        signalOptions.push([`AI${i}`, i]);
+      }
+    }
+    
+    const sourceSelect = el('select', {style: 'width:100%; margin-bottom:4px;'});
+    signalOptions.forEach(([name, idx]) => {
+      const opt = el('option', {value: idx}, name);
+      if (idx === (w.opts.triggerSourceIndex || 0)) opt.selected = true;
+      sourceSelect.append(opt);
+    });
+    sourceSelect.onchange = () => {
+      w.opts.triggerSourceIndex = parseInt(sourceSelect.value);
+      syncTriggerSettings(w);
+    };
+    sourceSection.append(
+      el('label', {style: labelStyle}, 'Input Channel'),
+      sourceSelect
+    );
+    
+    // === VERTICAL SECTION ===
+    const verticalSection = el('div', {style: sectionStyle});
+    verticalSection.append(el('div', {style: headerStyle}, '📊 VERTICAL'));
+    
+    // Hardware Sample Rate
+    const hwRateInput = el('input', {
+      type: 'number',
+      min: 100,
+      max: 500000,
+      step: 100,
+      value: w._hwSampleRate || window.HW_SAMPLE_RATE || 10000,
+      style: 'width:100%; margin-bottom:4px;'
+    });
+    hwRateInput.onchange = async () => {
+      const newRate = parseInt(hwRateInput.value) || 10000;
+      w._hwSampleRate = newRate;
+      
+      // Send to backend
+      try {
+        await fetch('/api/acq/hw_rate', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({hz: newRate})
+        });
+        console.log(`[SCOPE] HW sample rate set to ${newRate} Hz`);
+      } catch (e) {
+        console.error('Failed to set HW sample rate:', e);
+      }
+    };
+    verticalSection.append(
+      el('label', {style: labelStyle}, 'HW Sample Rate (Hz)'),
+      hwRateInput
+    );
+    
+    const timePerDivSelect = el('select', {style: 'width:100%; margin-bottom:4px;'});
+    [
+      ['1µs', 0.000001], ['10µs', 0.00001], ['100µs', 0.0001],
+      ['1ms', 0.001], ['10ms', 0.01], ['100ms', 0.1],
+      ['1s', 1.0], ['10s', 10.0]
+    ].forEach(([label, val]) => {
+      const opt = el('option', {value: val}, label);
+      if (val === w.opts.timePerDiv) opt.selected = true;
+      timePerDivSelect.append(opt);
+    });
+    timePerDivSelect.onchange = () => {
+      w.opts.timePerDiv = parseFloat(timePerDivSelect.value);
+      w.scopeState.snapshot = null; // Force recapture
+      syncTriggerSettings(w);
+    };
+    verticalSection.append(
+      el('label', {style: labelStyle}, 'Time/Div'),
+      timePerDivSelect
+    );
+    
+    // Y-axis scale mode
+    const scaleSelect = el('select', {style: 'width:100%; margin-bottom:4px;'});
+    ['Auto', 'Manual'].forEach(mode => {
+      const opt = el('option', {value: mode.toLowerCase()}, mode);
+      if ((w.opts.scale || 'auto') === mode.toLowerCase()) opt.selected = true;
+      scaleSelect.append(opt);
+    });
+    scaleSelect.onchange = () => {
+      w.opts.scale = scaleSelect.value;
+      updateScopeControls(); // Refresh to show/hide manual controls
+    };
+    verticalSection.append(
+      el('label', {style: labelStyle}, 'Y-Axis Scale'),
+      scaleSelect
+    );
+    
+    if (w.opts.scale === 'manual') {
+      const yMinInput = el('input', {
+        type: 'number',
+        step: '0.1',
+        value: w.opts.min || 0,
+        style: 'width:100%; margin-bottom:4px;'
+      });
+      yMinInput.oninput = () => { w.opts.min = parseFloat(yMinInput.value) || 0; };
+      verticalSection.append(el('label', {style: labelStyle}, 'Y Min'), yMinInput);
+      
+      const yMaxInput = el('input', {
+        type: 'number',
+        step: '0.1',
+        value: w.opts.max || 10,
+        style: 'width:100%; margin-bottom:4px;'
+      });
+      yMaxInput.oninput = () => { w.opts.max = parseFloat(yMaxInput.value) || 10; };
+      verticalSection.append(el('label', {style: labelStyle}, 'Y Max'), yMaxInput);
+    }
+    
+    // === TRIGGER SECTION ===
+    const triggerSection = el('div', {style: sectionStyle});
+    triggerSection.append(el('div', {style: headerStyle}, '⚡ TRIGGER'));
+    
+    // Mode selector
+    const triggerModeSelect = el('select', {style: 'width:100%; margin-bottom:4px;'});
+    ['Auto', 'Normal', 'Single'].forEach(mode => {
+      const opt = el('option', {value: mode.toLowerCase()}, mode);
+      if (mode.toLowerCase() === w.opts.triggerMode) opt.selected = true;
+      triggerModeSelect.append(opt);
+    });
+    triggerModeSelect.onchange = () => {
+      w.opts.triggerMode = triggerModeSelect.value;
+      w.scopeState.waitingForTrigger = (w.opts.triggerMode !== 'auto');
+      syncTriggerSettings(w);
+      updateScopeControls(); // Refresh to show/hide ARM button
+    };
+    triggerSection.append(
+      el('label', {style: labelStyle}, 'Mode'),
+      triggerModeSelect
+    );
+    
+    // Edge selector
+    const triggerEdgeSelect = el('select', {style: 'width:100%; margin-bottom:4px;'});
+    ['Rising', 'Falling'].forEach(edge => {
+      const opt = el('option', {value: edge.toLowerCase()}, edge);
+      if (edge.toLowerCase() === (w.opts.triggerEdge || 'rising')) opt.selected = true;
+      triggerEdgeSelect.append(opt);
+    });
+    triggerEdgeSelect.onchange = () => {
+      w.opts.triggerEdge = triggerEdgeSelect.value;
+      syncTriggerSettings(w);
+    };
+    triggerSection.append(
+      el('label', {style: labelStyle}, 'Edge'),
+      triggerEdgeSelect
+    );
+    
+    // Level input
+    const triggerLevelInput = el('input', {
+      type: 'number',
+      step: '0.1',
+      value: w.opts.triggerLevel || 0.5,
+      style: 'width:100%; margin-bottom:4px;'
+    });
+    triggerLevelInput.oninput = () => {
+      w.opts.triggerLevel = parseFloat(triggerLevelInput.value) || 0;
+      syncTriggerSettings(w);
+    };
+    triggerSection.append(
+      el('label', {style: labelStyle}, 'Level'),
+      triggerLevelInput
+    );
+    
+    // Position input (0-100%)
+    const triggerPositionInput = el('input', {
+      type: 'number',
+      min: 0,
+      max: 100,
+      step: 1,
+      value: w.opts.triggerPosition || 50,
+      style: 'width:100%; margin-bottom:4px;'
+    });
+    triggerPositionInput.oninput = () => {
+      w.opts.triggerPosition = parseInt(triggerPositionInput.value) || 50;
+      syncTriggerSettings(w);
+    };
+    triggerSection.append(
+      el('label', {style: labelStyle}, 'Position (%)'),
+      triggerPositionInput
+    );
+    
+    // Show trigger line checkbox
+    const showTriggerChk = el('input', {
+      type: 'checkbox',
+      checked: w.opts.showTriggerLine !== false,
+      style: 'margin-right:4px;'
+    });
+    showTriggerChk.onchange = () => {
+      w.opts.showTriggerLine = showTriggerChk.checked;
+    };
+    triggerSection.append(
+      el('label', {style: 'display:block; margin-top:4px;'}, [
+        showTriggerChk,
+        'Show Trigger Line'
+      ])
+    );
+    
+    // ARM button (only for single mode)
+    if (w.opts.triggerMode === 'single') {
+      const armButton = el('button', {
+        className: 'btn',
+        style: 'width:100%; margin-top:8px; padding:6px; font-weight:bold;'
+      }, w.scopeState.waitingForTrigger ? '🔴 ARMED' : '⚫ ARM');
+      armButton.onclick = () => {
+        w.scopeState.waitingForTrigger = true;
+        w.scopeState.snapshot = null;
+        console.log('[SCOPE] Armed for single trigger');
+        updateScopeControls();
+      };
+      triggerSection.append(armButton);
+    }
+    
+    scopePanel.append(sourceSection, verticalSection, triggerSection);
+  }
+  
+  // Initial update
+  updateScopeControls();
 
   // Initialize view
   w.view = w.view || { span: (window.GLOBAL_BUFFER_SPAN || 10), paused: false, tFreeze: 0 };
   w.opts.yGridLines = w.opts.yGridLines || 5;
+  
+  // Initialize scope state
+  w.scopeState = w.scopeState || {
+    snapshot: null,        // Captured sweep data
+    lastMode: 'roll',      // Track mode changes
+    waitingForTrigger: false
+  };
 
   // Sync initial span
   if (!w.opts.span) {
@@ -2425,13 +3035,24 @@ function mountChart(w, body){
     const buf=chartBuffers.get(w.id)||[];
     const W=canvas.clientWidth, H=canvas.clientHeight;
     canvas.width=W; canvas.height=H;
-    const plotL=60, plotR=W-10, plotT=10, plotB=H-30;
+    
+    // Adjust plot area if scope panel is visible
+    const isScope = w.opts.displayMode === 'scope';
+    const scopePanelWidth = isScope ? 180 : 0;
+    const plotL=60, plotR=W-10-scopePanelWidth, plotT=10, plotB=H-30;
 
     ctx.clearRect(0,0,W,H);
     ctx.strokeStyle='#3b425e'; ctx.lineWidth=1;
     ctx.strokeRect(plotL,plotT,plotR-plotL,plotB-plotT);
-
-    if (buf.length){
+    
+    // NESTED FUNCTIONS - have access to draw()'s variables
+    function drawRollMode() {
+      // Track mode change
+      if (w.scopeState && w.scopeState.lastMode !== 'roll') {
+        w.scopeState.lastMode = 'roll';
+        console.log('[SCOPE] Entered roll mode');
+      }
+      
       // KEY FIX: When NOT paused by zoom, use opts.span (the spinner value)
       // When paused by zoom, use view.span (the zoomed value)
       const viewSpan = w.view.paused
@@ -2538,14 +3159,302 @@ function mountChart(w, body){
       } else if (cur && cur.ctxEl && cur.ctxEl.parentNode && getPopupMode(cur.ctxEl)==='current'){
         updateChartPopupValues(w, cur.ctxEl, viewBuf, t0, xscale, plotL, ymin, ymax, (plotB-plotT)/(ymax-ymin), null);
       }
+    } // End drawRollMode
+    
+    function drawScopeMode() {
+      // SCOPE MODE: Fixed time window, triggered sweeps, left-to-right oldest→newest
+      const timePerDiv = w.opts.timePerDiv || 1.0;
+      const totalTime = timePerDiv * 10; // 10 divisions
+      
+      // Use HARDWARE sample rate for buffer calculations
+      const hwRate = w._hwSampleRate || w._acqRate || 10000; // Default to 10kHz
+      const samplesNeeded = Math.ceil(totalTime * hwRate);
+      
+      // Detect mode change
+      if (w.scopeState.lastMode !== 'scope') {
+        // Just entered scope mode - capture initial snapshot
+        w.scopeState.snapshot = buf.slice(-samplesNeeded);
+        w.scopeState.lastMode = 'scope';
+        w.scopeState.waitingForTrigger = (w.opts.triggerMode === 'normal' || w.opts.triggerMode === 'single');
+        console.log(`[SCOPE] Entered scope mode, mode=${w.opts.triggerMode}, waitingForTrigger=${w.scopeState.waitingForTrigger}`);
+      }
+      
+      // Use snapshot instead of live buffer (prevents scrolling)
+      const scopeBuf = w.scopeState.snapshot || buf.slice(-samplesNeeded);
+      
+      // Calculate appropriate update rate based on timePerDiv
+      // Update rate = 1 / (10 * timePerDiv), capped at reasonable limits
+      const minUpdateInterval = 50;  // Max 20 Hz update rate
+      const maxUpdateInterval = 5000; // Min 0.2 Hz update rate
+      const idealUpdateInterval = (timePerDiv * 10 * 1000); // Time for full screen in ms
+      const updateInterval = Math.max(minUpdateInterval, Math.min(maxUpdateInterval, idealUpdateInterval));
+      
+      // Trigger detection logic
+      if ((w.opts.triggerMode === 'normal' || w.opts.triggerMode === 'single') && w.scopeState.waitingForTrigger) {
+        // Make sure buffer has enough samples for full pre-trigger window
+        const minBufferSize = samplesNeeded; // Need at least 1 full display
+        
+        if (buf.length < minBufferSize) {
+          if (!w._bufferWaitingLogged) {
+            console.log(`[SCOPE] Waiting for buffer to fill... ${buf.length}/${minBufferSize} samples`);
+            w._bufferWaitingLogged = true;
+            setTimeout(() => { w._bufferWaitingLogged = false; }, 2000);
+          }
+          // Use what we have for now (auto mode behavior)
+          w.scopeState.snapshot = buf.slice(-Math.min(buf.length, samplesNeeded));
+          return; // Don't search for triggers yet
+        }
+        
+        // Use the selected source index from the series
+        const triggerSourceIdx = w.opts.triggerSourceIndex || 0;
+        const triggerLevel = w.opts.triggerLevel || 0.5;
+        const triggerEdge = w.opts.triggerEdge || 'rising';
+        
+        if (!w._triggerDebugLogged) {
+          const series = w.opts.series || [];
+          const triggerSeries = series[triggerSourceIdx];
+          console.log(`[SCOPE] Waiting for trigger:`);
+          console.log(`  - Mode: ${w.opts.triggerMode}`);
+          console.log(`  - Series index: ${triggerSourceIdx} of ${series.length}`);
+          console.log(`  - Series: ${triggerSeries ? `${triggerSeries.kind}${triggerSeries.index}` : 'INVALID'}`);
+          console.log(`  - Level: ${triggerLevel}`);
+          console.log(`  - Edge: ${triggerEdge}`);
+          console.log(`  - Buffer length: ${buf.length}`);
+          if (buf.length > 0) {
+            const lastSample = buf[buf.length - 1];
+            console.log(`  - Last sample v[${triggerSourceIdx}]: ${lastSample.v[triggerSourceIdx]}`);
+            console.log(`  - Last sample v array length: ${lastSample.v.length}`);
+          }
+          w._triggerDebugLogged = true;
+          setTimeout(() => { w._triggerDebugLogged = false; }, 2000); // Log every 2 seconds
+        }
+        
+        // Scan buffer for trigger event
+        let triggerIdx = -1;
+        const searchDepth = Math.min(buf.length - 1, samplesNeeded * 2); // Search up to 2x display window
+        for (let i = 1; i < searchDepth; i++) {
+          const prevSample = buf[buf.length - i - 1];
+          const curSample = buf[buf.length - i];
+          
+          // Get values from the trigger source series
+          if (!prevSample || !curSample) continue;
+          if (prevSample.v.length <= triggerSourceIdx || curSample.v.length <= triggerSourceIdx) continue;
+          
+          const prevVal = prevSample.v[triggerSourceIdx];
+          const curVal = curSample.v[triggerSourceIdx];
+          
+          if (prevVal === undefined || curVal === undefined) continue;
+          
+          // Check for trigger condition
+          const crossed = (triggerEdge === 'rising') 
+            ? (prevVal < triggerLevel && curVal >= triggerLevel)
+            : (prevVal > triggerLevel && curVal <= triggerLevel);
+          
+          if (crossed) {
+            triggerIdx = buf.length - i;
+            console.log(`[SCOPE] Found trigger crossing! prevVal=${prevVal}, curVal=${curVal}, level=${triggerLevel}`);
+            break;
+          }
+        }
+        
+        if (triggerIdx >= 0) {
+          // Triggered! Capture sweep with proper pre/post trigger samples
+          const triggerPosition = w.opts.triggerPosition || 50; // 0-100%
+          const preTriggerSamples = Math.floor(samplesNeeded * triggerPosition / 100);
+          const postTriggerSamples = samplesNeeded - preTriggerSamples;
+          
+          const startIdx = Math.max(0, triggerIdx - preTriggerSamples);
+          const endIdx = Math.min(buf.length, triggerIdx + postTriggerSamples);
+          
+          w.scopeState.snapshot = buf.slice(startIdx, endIdx);
+          
+          // IMPORTANT: Calculate where trigger actually is in the captured snapshot
+          // If we wanted preTriggerSamples but startIdx was clamped, trigger is closer to start
+          const actualPreTriggerSamples = triggerIdx - startIdx;
+          w.scopeState.triggerSampleIdx = actualPreTriggerSamples;
+          w.scopeState.lastAutoUpdate = Date.now();
+          
+          console.log(`[SCOPE] TRIGGERED! ${triggerEdge} edge at ${triggerLevel}`);
+          console.log(`  - Captured ${w.scopeState.snapshot.length} samples (wanted ${samplesNeeded})`);
+          console.log(`  - Trigger at buffer index ${triggerIdx}`);
+          console.log(`  - Snapshot from buffer[${startIdx}] to buffer[${endIdx}]`);
+          console.log(`  - Trigger at snapshot sample ${actualPreTriggerSamples} (wanted ${preTriggerSamples})`);
+          
+          // Single mode stays triggered (frozen), Normal mode re-arms immediately
+          if (w.opts.triggerMode === 'single') {
+            w.scopeState.waitingForTrigger = false; // Stop waiting, frozen
+          } else {
+            // Normal mode: re-arm after brief delay to avoid re-triggering on same edge
+            w.scopeState.waitingForTrigger = false;
+            setTimeout(() => {
+              if (w.opts.triggerMode === 'normal') {
+                w.scopeState.waitingForTrigger = true;
+              }
+            }, 100); // 100ms delay before re-arming
+          }
+        }
+      }
+      
+      // Auto mode: update snapshot at appropriate rate
+      if (w.opts.triggerMode === 'auto' && scopeBuf.length > 0) {
+        if (!w.scopeState.lastAutoUpdate || (Date.now() - w.scopeState.lastAutoUpdate) > updateInterval) {
+          w.scopeState.snapshot = buf.slice(-samplesNeeded);
+          w.scopeState.lastAutoUpdate = Date.now();
+        }
+      }
+      
+      if (scopeBuf.length === 0) {
+        ctx.fillStyle = '#7a8199';
+        ctx.font = '14px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('Waiting for data...', (plotL + plotR) / 2, (plotT + plotB) / 2);
+        return;
+      }
+      
+      // Time axis: oldest (left) to newest (right)
+      const t0 = scopeBuf[0].t;
+      const t1 = scopeBuf[scopeBuf.length - 1].t;
+      const dt = Math.max(1e-6, t1 - t0);
+      
+      // Y-axis scaling
+      let ymin = Infinity, ymax = -Infinity;
+      for (let si = 0; si < w.opts.series.length; si++) {
+        const s = w.opts.series[si];
+        const displayScale = s.displayScale !== undefined ? s.displayScale : 1.0;
+        const displayOffset = s.displayOffset !== undefined ? s.displayOffset : 0.0;
+        for (const b of scopeBuf) {
+          const displayValue = (b.v[si] * displayScale) + displayOffset;
+          if (displayValue < ymin) ymin = displayValue;
+          if (displayValue > ymax) ymax = displayValue;
+        }
+      }
+      if (w.opts.scale === 'manual') { ymin = w.opts.min; ymax = w.opts.max; }
+      if (!(isFinite(ymin) && isFinite(ymax)) || ymin === ymax) { ymin -= 1; ymax += 1; }
+      
+      const yscale = (plotB - plotT) / (ymax - ymin);
+      const xscale = (plotR - plotL) / dt;
+      
+      // Draw 10 vertical division lines (time grid)
+      ctx.strokeStyle = (getComputedStyle(document.documentElement).getPropertyValue('--grid') || '#2a2f44').trim();
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 10; i++) {
+        const x = plotL + i * (plotR - plotL) / 10;
+        ctx.beginPath();
+        ctx.moveTo(x, plotT);
+        ctx.lineTo(x, plotB);
+        ctx.stroke();
+      }
+      
+      // Y grid (horizontal lines with labels)
+      const yGridLines = Math.max(2, Math.min(20, w.opts.yGridLines || 5));
+      ctx.fillStyle = '#7a8199';
+      ctx.font = '11px system-ui';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      
+      for (let i = 0; i <= yGridLines; i++) {
+        const frac = i / yGridLines;
+        const y = plotB - frac * (plotB - plotT);
+        const val = ymin + frac * (ymax - ymin);
+        
+        ctx.beginPath();
+        ctx.moveTo(plotL, y);
+        ctx.lineTo(plotR, y);
+        ctx.stroke();
+        
+        ctx.fillText(val.toFixed(2), plotL - 5, y);
+      }
+      
+      // Draw trigger position line (yellow vertical line) - show in all modes
+      const triggerPosition = w.opts.triggerPosition || 50; // 0-100%
+      const triggerX = plotL + (plotR - plotL) * (triggerPosition / 100);
+      
+      ctx.strokeStyle = 'rgba(255, 255, 0, 0.6)'; // Yellow
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(triggerX, plotT);
+      ctx.lineTo(triggerX, plotB);
+      ctx.stroke();
+      ctx.setLineDash([]); // Reset dash
+      
+      // Label
+      ctx.fillStyle = '#ffff00';
+      ctx.font = '10px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(`▼ ${triggerPosition}%`, triggerX, plotT - 2);
+      
+      // Draw trigger level line (red horizontal line)
+      if (w.opts.showTriggerLine) {
+        const triggerY = plotB - ((w.opts.triggerLevel - ymin) * yscale);
+        if (triggerY >= plotT && triggerY <= plotB) {
+          ctx.strokeStyle = 'rgba(255, 77, 77, 0.7)'; // Light red
+          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 5]);
+          ctx.beginPath();
+          ctx.moveTo(plotL, triggerY);
+          ctx.lineTo(plotR, triggerY);
+          ctx.stroke();
+          ctx.setLineDash([]); // Reset dash
+          
+          // Label
+          ctx.fillStyle = '#ff4d4d';
+          ctx.font = '11px system-ui';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`◄ ${w.opts.triggerLevel.toFixed(2)}`, plotL - 5, triggerY);
+        }
+      }
+      
+      // Draw series
+      legend.innerHTML = '';
+      (w.opts.series || []).forEach((s, si) => {
+        const displayScale = s.displayScale !== undefined ? s.displayScale : 1.0;
+        const displayOffset = s.displayOffset !== undefined ? s.displayOffset : 0.0;
+        
+        ctx.beginPath();
+        let first = true;
+        for (const b of scopeBuf) {
+          const displayValue = (b.v[si] * displayScale) + displayOffset;
+          const x = plotL + (b.t - t0) * xscale;
+          const y = plotB - (displayValue - ymin) * yscale;
+          if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = colorFor(si);
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        const lab = (s.name && s.name.length) ? s.name : labelFor(s);
+        legend.append(el('div', {className: 'item'}, [
+          el('span', {className: 'swatch', style: `background:${colorFor(si)}`}, ''), lab
+        ]));
+      });
+      
+      // Display scope info
+      ctx.fillStyle = '#7a8199';
+      ctx.font = '10px system-ui';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${timePerDiv}s/div`, plotR, plotB + 20);
+      if (w.opts.triggerEnabled) {
+        ctx.fillText(`Mode: ${w.opts.triggerMode.toUpperCase()}`, plotR - 80, plotB + 20);
+      }
+    } // End drawScopeMode
+    
+    // Call the appropriate rendering function
+    if (buf.length) {
+      if (isScope) {
+        drawScopeMode();
+      } else {
+        drawRollMode();
+      }
     }
     
-    // Track RAF state
+    // Track RAF state (runs after either mode)
     const rafState = chartRAFHandles.get(w.id) || {isRunning: false};
     rafState.isRunning = true;
     rafState.rafId = requestAnimationFrame(draw);
     chartRAFHandles.set(w.id, rafState);
-  }
+  } // End draw()
   
   // Check if this widget had a running RAF before (e.g., after renderPage)
   const existingRAF = chartRAFHandles.get(w.id);
@@ -4605,6 +5514,15 @@ function normalizeLayoutPages(pages){
         w.opts.max        = Number.isFinite(w.opts.max) ? w.opts.max : 10;
         w.opts.filterHz   = Number.isFinite(w.opts.filterHz) ? w.opts.filterHz : 0;
         w.opts.cursorMode = w.opts.cursorMode ?? 'follow';
+        // Scope mode defaults
+        w.opts.displayMode       = w.opts.displayMode ?? 'roll';
+        w.opts.timePerDiv        = Number.isFinite(w.opts.timePerDiv) ? w.opts.timePerDiv : 1.0;
+        w.opts.triggerSourceIndex = Number.isInteger(w.opts.triggerSourceIndex) ? w.opts.triggerSourceIndex : 0;
+        w.opts.triggerLevel      = Number.isFinite(w.opts.triggerLevel) ? w.opts.triggerLevel : 0.5;
+        w.opts.triggerEdge       = w.opts.triggerEdge ?? 'rising';
+        w.opts.triggerMode       = w.opts.triggerMode ?? 'auto';
+        w.opts.triggerPosition   = Number.isFinite(w.opts.triggerPosition) ? w.opts.triggerPosition : 50;
+        w.opts.showTriggerLine   = w.opts.showTriggerLine ?? true;
         break;
       case 'gauge':
         w.opts.title  = w.opts.title ?? 'Gauge';

@@ -1,9 +1,10 @@
 # server/mcc_bridge.py
-__version__ = "3.0.2"  # Added read_ai_all_burst with board_filter parameter
-BRIDGE_VERSION = "2.0.6"  # Fixed missing imports
+__version__ = "3.1.1"  # Fixed sample format - returns flat list per sample, not nested
+BRIDGE_VERSION = "3.1.0"
 
 import asyncio
 from typing import List, Optional
+from ctypes import c_ushort
 
 
 # ---------- Try mcculw (E-1608 AI/AO/DO and optional TCs) ----------
@@ -255,24 +256,91 @@ class MCCBridge:
 
     def read_ai_all_burst(self, rate_hz: int = 100, samples: int = 50, board_filter=None):
         """
-        Read multiple samples in burst mode using hardware scan
-        Falls back to sequential reads if scan not available
+        Read multiple samples in burst mode using hardware scan (ul.a_in_scan)
+        This is TRUE burst mode - much faster than sequential reads!
         
         Args:
-            rate_hz: Sampling rate
-            samples: Number of samples to read
+            rate_hz: Sampling rate (up to 250,000 Hz for E-1608)
+            samples: Number of samples to read PER CHANNEL
             board_filter: Optional list of board numbers to read from
             
         Returns:
-            List of samples, each sample is list of AI values
+            List of samples, each sample is list of AI values for all channels
         """
-        # For now, just do fast sequential reads
-        # TODO: Implement proper ul.a_in_scan for true burst mode
-        burst_data = []
-        for _ in range(samples):
-            sample = self.read_ai_all(board_filter=board_filter)
-            burst_data.append(sample)
-        return burst_data
+        if not HAVE_MCCULW:
+            # Fallback to sequential reads
+            burst_data = []
+            for _ in range(samples):
+                sample = self.read_ai_all(board_filter=board_filter)
+                burst_data.append(sample)
+            return burst_data
+        
+        # Use hardware burst mode (ul.a_in_scan)
+        all_samples = []
+        
+        for board_num in (board_filter if board_filter else self._boards_1608):
+            if board_num not in self._boards_1608:
+                continue
+            
+            try:
+                # Allocate buffer for this burst
+                # Buffer size = samples * 8 channels
+                total_count = samples * 8
+                buffer = (c_ushort * total_count)()
+                
+                # ul.a_in_scan parameters:
+                # - board_num: which board
+                # - low_chan: 0 (start channel)
+                # - high_chan: 7 (end channel)  
+                # - count: TOTAL samples across ALL channels
+                # - rate: samples per second for ALL channels combined
+                # - gain: voltage range
+                # - buffer: where to store data
+                # - options: 0 (blocking mode)
+                
+                actual_rate = ul.a_in_scan(
+                    board_num,
+                    0,  # low_chan
+                    7,  # high_chan
+                    total_count,  # TOTAL samples (samples * 8 channels)
+                    int(rate_hz),  # hardware sample rate
+                    ULRange.BIP10VOLTS,
+                    buffer,
+                    0  # options: blocking mode
+                )
+                
+                # Convert buffer to list of samples
+                # Buffer layout: [ch0_s0, ch1_s0, ..., ch7_s0, ch0_s1, ch1_s1, ..., ch7_s1, ...]
+                board_samples = []
+                for i in range(samples):
+                    sample = []
+                    for ch in range(8):
+                        raw = buffer[i * 8 + ch]
+                        # Convert to volts
+                        volts = ul.to_eng_units(board_num, ULRange.BIP10VOLTS, raw)
+                        sample.append(volts)
+                    board_samples.append(sample)
+                
+                # Interleave with samples from other boards
+                if not all_samples:
+                    # First board - just use its samples directly
+                    all_samples = board_samples
+                else:
+                    # Add this board's channels to existing samples
+                    for i, board_sample in enumerate(board_samples):
+                        if i < len(all_samples):
+                            all_samples[i].extend(board_sample)
+                
+            except Exception as e:
+                print(f"[MCCBridge] Burst read failed on board {board_num}: {e}")
+                # Add zeros for this board
+                for i in range(samples):
+                    if i >= len(all_samples):
+                        all_samples.append([0.0] * 8)
+                    else:
+                        all_samples[i].extend([0.0] * 8)
+        
+        return all_samples
 
     def _set_tc_type(self, ch: int, typ: str):
         """Set TC type for channel. ULDAQ only - mcculw uses InstaCal configuration."""
