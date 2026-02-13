@@ -1,4 +1,14 @@
 <!DOCTYPE html>
+<!-- 
+  MCC DAQ System - Web Interface
+  Version: 1.0.0
+  Updated: 2026-02-12
+  
+  1.0.0 - First versioned release
+  - Removed Logic Element buttons
+  - Removed Math Operator buttons
+  - Clean UI for Expressions-only workflow
+-->
 <html>
 <head>
   <meta charset="utf-8" />
@@ -14,10 +24,8 @@
   <header class="topbar">
     <div class="left">
       <button id="connectBtn" class="btn">Connect</button>
-      <label>Acq Hz <input id="rate" type="number" min="1" step="1" value="100"></label>
+      <label>Rate Hz <input id="rate" type="number" min="1" step="1" value="100"></label>
       <button id="setRate" class="btn">Set</button>
-      <label>Display Hz <input id="displayRate" type="number" min="1" max="500" step="1" value="25"></label>
-      <button id="setDisplayRate" class="btn">Set</button>
       <span id="session" class="badge"></span>
       <span id="versions" class="muted"></span>
     </div>
@@ -27,8 +35,8 @@
       <button id="zeroAI" class="btn" title="Zero AI Channels">⚡ Zero</button>
       <button id="editPID" class="btn">PID</button>
       <button id="editMotor" class="btn">Motors</button>
-      <button id="editLE" class="btn">Logic</button>
-      <button id="editMath" class="btn">Math</button>
+      <!-- Logic/Math editors removed - use Expressions -->
+      <!-- Logic/Math editors removed - use Expressions -->
       <button id="editExpr" class="btn">Expressions</button>
       <button id="exprHelp" class="btn" title="Expression Language Reference">❓ Expr Help</button>
       <button id="editScript" class="btn">Script</button>
@@ -92,8 +100,6 @@
       <button class="btn" data-add="dobutton">DO Button</button>
       <button class="btn" data-add="pidpanel">PID Panel</button>
       <button class="btn" data-add="motor">Motor Controller</button>
-      <button class="btn" data-add="le">Logic Element</button>
-      <button class="btn" data-add="mathop">Math Operator</button>
       <button class="btn" data-add="expr">Expression</button>
       <h3>Pages</h3>
       <div id="pages"></div>

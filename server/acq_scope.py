@@ -239,16 +239,24 @@ class ScopeProcessor:
             print(f"[SCOPE] Decimated triggered sweep: {original_count} → {len(sweep_samples)} samples (factor: {decimation_factor})")
         
         # Send to frontend
-        asyncio.create_task(self.broadcast({
+        sweep_msg = {
             'type': 'scope_sweep',
             'mode': self.trigger_state.mode,
             'triggered': True,
-            'trigger_index': (trigger_idx - start_idx) // decimation_factor,  # Adjust for decimation
+            'trigger_index': (trigger_idx - start_idx) // decimation_factor,
             'samples': sweep_samples,
             'time_per_div': self.trigger_state.time_per_div,
             'trigger_level': self.trigger_state.level,
             'trigger_position': self.trigger_state.position
-        }))
+        }
+        
+        # DEBUG: Check what's in first sample
+        if sweep_samples and len(sweep_samples) > 0:
+            first_sample = sweep_samples[0]
+            ai_count = len(first_sample.get('ai', [])) if isinstance(first_sample, dict) else 0
+            print(f"[SCOPE-SEND] Broadcasting {len(sweep_samples)} samples, first sample AI count: {ai_count}, keys: {list(first_sample.keys()) if isinstance(first_sample, dict) else 'NOT A DICT'}")
+        
+        asyncio.create_task(self.broadcast(sweep_msg))
         
         print(f"[SCOPE] Sent triggered sweep: {len(sweep_samples)} samples, "
               f"trigger at sample {(trigger_idx - start_idx) // decimation_factor}")
@@ -283,6 +291,16 @@ class ScopeProcessor:
                 print(f"[SCOPE-AUTO] Decimated {self.trigger_state.samples_needed} → {len(sweep_samples)} samples (factor: {decimation_factor})")
             
             print(f"[SCOPE-AUTO] Sending non-triggered sweep: {len(sweep_samples)} samples")
+            print(f"[SCOPE-AUTO-DEBUG] sweep_samples type: {type(sweep_samples)}, length: {len(sweep_samples) if sweep_samples else 0}")
+            
+            # DEBUG: Check first sample content  
+            if sweep_samples and len(sweep_samples) > 0:
+                first_sample = sweep_samples[0]
+                ai_count = len(first_sample.get('ai', [])) if isinstance(first_sample, dict) else 0
+                ai_vals = first_sample.get('ai', [])[:3] if isinstance(first_sample, dict) else []
+                print(f"[SCOPE-AUTO-DEBUG] First sample: {ai_count} AI, first 3 vals: {ai_vals}")
+            else:
+                print(f"[SCOPE-AUTO-DEBUG] NO SAMPLES IN sweep_samples!")
             
             asyncio.create_task(self.broadcast({
                 'type': 'scope_sweep',

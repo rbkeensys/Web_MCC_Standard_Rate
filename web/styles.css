@@ -1,3 +1,14 @@
+/*
+ * MCC DAQ System - Styles
+ * Version: 1.0.0
+ * Updated: 2026-02-12
+ * 
+ * 1.0.0 - First versioned release
+ * - Removed Logic Element styles
+ * - Removed Math Operator styles
+ * - Clean styling for Expressions-only workflow
+ */
+
 :root { --bg:#0f1115; --fg:#e6e6e6; --muted:#9094a1; --accent:#79c0ff; --card:#171923; --good:#2faa60; --bad:#d84a4a; --default:#636a7b; --grid:#2a2f44; --grid2:#1e2235; --cursor:#ff4d4d; }
 * { box-sizing: border-box; }
 body { margin:0; padding:0; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial; height:100vh; display:flex; flex-direction:column; }

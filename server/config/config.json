@@ -179,7 +179,7 @@
     },
     {
       "boardNum": 2,
-      "sampleRateHz": 500.0,
+      "sampleRateHz": 10000.0,
       "blockSize": 128,
       "aiMode": "SE",
       "enabled": true,
@@ -188,7 +188,7 @@
           "name": "Scale",
           "slope": 1.0,
           "offset": 0.0,
-          "cutoffHz": 0.0,
+          "cutoffHz": 1.0,
           "units": "grams",
           "include": true
         },
@@ -247,6 +247,22 @@
           "cutoffHz": 0.0,
           "units": "",
           "include": false
+        },
+        {
+          "name": "Test",
+          "slope": 1.0,
+          "offset": 0.0,
+          "cutoffHz": 0.0,
+          "units": "",
+          "include": true
+        },
+        {
+          "name": "Test",
+          "slope": 1.0,
+          "offset": 0.0,
+          "cutoffHz": 0.0,
+          "units": "",
+          "include": true
         },
         {
           "name": "Test",
